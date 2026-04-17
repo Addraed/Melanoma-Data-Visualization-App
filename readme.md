@@ -3,7 +3,7 @@
 > Desarrollo de una aplicación web para la identificación de síntomas específicos de distintos subtipos de cáncer de melanoma para una mejor profilaxis y un tratamiento más especializado.
 
 **Autor:** Manuel Rosario Marín Fernández  
-**Máster:** MU Bioinformática y Bioestadística — Universitat Oberta de Catalunya (UOC) / Universitat de Barcelona  
+**Máster:** MU Bioinformática y Bioestadística / Universitat Oberta de Catalunya (UOC) / Universitat de Barcelona  
 **Tutora:** Romina Astrid Rebrij  
 **Fecha:** Enero 2023  
 
