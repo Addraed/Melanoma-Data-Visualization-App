@@ -1,4 +1,4 @@
-# 🧬 Melanoma Subtype Classifier — TFM Bioinformática y Bioestadística
+# 🧬 Melanoma Subtype Classifier ( TFM Bioinformática y Bioestadística )
 
 > Desarrollo de una aplicación web para la identificación de síntomas específicos de distintos subtipos de cáncer de melanoma para una mejor profilaxis y un tratamiento más especializado.
 
