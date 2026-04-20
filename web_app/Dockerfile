@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 RUN R -e "install.packages('BiocManager', repos='https://cran.r-project.org')"
 RUN R -e "BiocManager::install('TCGAbiolinks', ask=FALSE, update=FALSE)"
 
-# Crear directorio de caché ANTES de intentar escribir en él
+# Crear directorio de caché
 RUN mkdir -p /data_cache /repo_data
 
 # Pre-cachear datos SKCM en build time (falla silenciosamente si no hay red)
@@ -32,12 +32,9 @@ WORKDIR /app
 COPY web_app/requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copiar solo los archivos necesarios de la app
+# Copiar la app
 COPY web_app/main.py .
 COPY web_app/static/ ./static/
-
-# Copiar los CSVs del repo como fallback inmediato
-COPY data/ /repo_data/
 
 EXPOSE 8000
 
