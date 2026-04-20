@@ -10,31 +10,34 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar BiocManager y TCGAbiolinks en R
-RUN R -e "install.packages('BiocManager', repos='https://cran.r-project.org')" && \
-    R -e "BiocManager::install('TCGAbiolinks', ask=FALSE, update=FALSE)" && \
-    R -e "library(TCGAbiolinks); skcm <- TCGAquery_subtype('skcm'); saveRDS(skcm, '/data_cache/skcm_subtipos.rds')" || true
+RUN R -e "install.packages('BiocManager', repos='https://cran.r-project.org')"
+RUN R -e "BiocManager::install('TCGAbiolinks', ask=FALSE, update=FALSE)"
 
-# Crear directorio de caché
-RUN mkdir -p /data_cache
+# Crear directorio de caché ANTES de intentar escribir en él
+RUN mkdir -p /data_cache /repo_data
 
-# Pre-cachear los datos SKCM en build time (falla silenciosamente si no hay red)
-RUN R -e " \
-  tryCatch({ \
-    library(TCGAbiolinks); \
-    skcm <- TCGAquery_subtype('skcm'); \
-    saveRDS(skcm, '/data_cache/skcm_subtipos.rds'); \
-    message('Cache OK: ', nrow(skcm), ' pacientes'); \
-  }, error=function(e) message('Cache build failed (se generará en runtime): ', e\$message)) \
+# Pre-cachear datos SKCM en build time (falla silenciosamente si no hay red)
+RUN R -e "\
+  tryCatch({\
+    library(TCGAbiolinks);\
+    skcm <- TCGAquery_subtype('skcm');\
+    saveRDS(skcm, '/data_cache/skcm_subtipos.rds');\
+    message('Cache OK: ', nrow(skcm), ' pacientes');\
+  }, error=function(e) message('Cache build failed, se hara en runtime: ', e\$message))\
 "
 
 WORKDIR /app
 
 # Instalar dependencias Python
-COPY requirements.txt .
+COPY web_app/requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copiar código de la aplicación
-COPY . .
+# Copiar solo los archivos necesarios de la app
+COPY web_app/main.py .
+COPY web_app/static/ ./static/
+
+# Copiar los CSVs del repo como fallback inmediato
+COPY data/ /repo_data/
 
 EXPOSE 8000
 
