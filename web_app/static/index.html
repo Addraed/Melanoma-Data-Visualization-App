@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🧬 Melanoma Subtype Classifier</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root {
+  --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
+  --text:#e6edf3;--muted:#8b949e;
+  --blue:#58a6ff;--green:#3fb950;--amber:#d29922;--red:#f85149;--purple:#bc8cff;
+  --font:'Segoe UI',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;}
+
+/* HEADER */
+header{background:linear-gradient(135deg,#0d1117,#161b22);border-bottom:1px solid var(--border);
+  padding:16px 28px;display:flex;align-items:center;gap:14px;}
+header h1{font-size:1.25rem;font-weight:700;}
+.sub{color:var(--muted);font-size:.8rem;margin-left:5px;}
+.badge{font-size:.63rem;padding:2px 8px;border-radius:12px;font-weight:700;
+  letter-spacing:.05em;text-transform:uppercase;}
+.bb{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid rgba(88,166,255,.3);}
+.bg{background:rgba(63,185,80,.12);color:var(--green);border:1px solid rgba(63,185,80,.3);}
+.br{background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.3);}
+
+/* LAYOUT */
+.wrap{display:grid;grid-template-columns:256px 1fr;min-height:calc(100vh - 57px);}
+
+/* SIDEBAR */
+.sidebar{background:var(--surface);border-right:1px solid var(--border);
+  padding:14px 0;position:sticky;top:0;height:calc(100vh - 57px);overflow-y:auto;}
+.sb-h{padding:0 13px 7px;font-size:.63rem;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--muted);font-weight:700;}
+.sb-sep{height:1px;background:var(--border);margin:9px 0;}
+.si{display:flex;align-items:center;gap:9px;padding:7px 13px;cursor:pointer;
+  transition:background .15s;border-left:3px solid transparent;}
+.si:hover{background:var(--surface2);}
+.si.active{background:var(--surface2);border-left-color:var(--blue);}
+.si.done .sn{background:var(--green);color:#000;}
+.si.running .sn{background:var(--amber);color:#000;animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.sn{width:21px;height:21px;border-radius:50%;background:var(--border);
+  display:flex;align-items:center;justify-content:center;font-size:.67rem;font-weight:700;flex-shrink:0;}
+.sl{font-size:.79rem;line-height:1.3;}
+.ss{font-size:.64rem;color:var(--muted);}
+.ctx{margin:0 9px;background:var(--bg);border:1px solid var(--border);border-radius:7px;
+  padding:10px;font-size:.67rem;color:var(--muted);line-height:1.55;}
+.ctx strong{color:var(--text);}
+.ct{font-size:.63rem;text-transform:uppercase;letter-spacing:.07em;color:var(--blue);
+  margin-bottom:3px;font-weight:700;display:block;margin-top:7px;}
+.ct:first-child{margin-top:0;}
+
+/* STATUS DOT */
+.status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;}
+.dot-ok{background:var(--green);}
+.dot-warn{background:var(--amber);}
+.dot-err{background:var(--red);}
+#api-status{font-size:.67rem;padding:8px 13px;color:var(--muted);}
+
+/* MAIN */
+main{padding:20px 28px;overflow-y:auto;}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:20px;margin-bottom:14px;}
+.pt{font-size:.95rem;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
+.pd{color:var(--muted);font-size:.79rem;margin-bottom:13px;line-height:1.6;}
+.pd code{background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:.74rem;color:var(--blue);}
+.pd em{color:var(--text);font-style:normal;font-weight:500;}
+
+/* CALLOUTS */
+.callout{border-radius:7px;padding:10px 14px;font-size:.78rem;margin-bottom:11px;
+  display:flex;gap:8px;line-height:1.55;}
+.cb{background:rgba(88,166,255,.07);border:1px solid rgba(88,166,255,.2);color:#a5c8ff;}
+.cg{background:rgba(63,185,80,.07);border:1px solid rgba(63,185,80,.2);color:#7ee787;}
+.ca{background:rgba(210,153,34,.07);border:1px solid rgba(210,153,34,.2);color:#e3b341;}
+.cr{background:rgba(248,81,73,.07);border:1px solid rgba(248,81,73,.2);color:#ffa198;}
+
+/* SOURCE TABS */
+.stabs{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:13px;}
+.stab{flex:1;padding:8px 12px;text-align:center;cursor:pointer;font-size:.77rem;font-weight:600;
+  color:var(--muted);background:var(--bg);transition:all .15s;border-right:1px solid var(--border);}
+.stab:last-child{border-right:none;}
+.stab.active{background:var(--surface2);color:var(--text);}
+.stab:hover:not(.active){color:var(--blue);}
+.spanel{display:none;}.spanel.active{display:block;}
+
+/* DROP ZONE */
+.dz{border:2px dashed var(--border);border-radius:8px;padding:22px;text-align:center;
+  cursor:pointer;transition:all .2s;margin-bottom:11px;}
+.dz:hover,.dz.drag{border-color:var(--blue);background:rgba(88,166,255,.04);}
+#fileInput{display:none;}
+
+/* BTNS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 15px;border-radius:6px;
+  border:none;cursor:pointer;font-size:.79rem;font-weight:600;font-family:var(--font);transition:all .15s;}
+.bp{background:var(--blue);color:#000;}.bp:hover{background:#79b8ff;}
+.bp:disabled{opacity:.35;cursor:not-allowed;}
+.bg2{background:var(--green);color:#000;}.bg2:hover{background:#56d364;}
+.bo{background:transparent;border:1px solid var(--border);color:var(--text);}
+.bo:hover{border-color:var(--blue);color:var(--blue);}
+.rbrow{display:flex;gap:9px;align-items:center;flex-wrap:wrap;}
+.rs{font-size:.78rem;color:var(--muted);}
+
+/* PARAMS */
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:11px;margin-bottom:13px;}
+.pg label{display:block;font-size:.65rem;color:var(--muted);margin-bottom:4px;
+  text-transform:uppercase;letter-spacing:.05em;}
+.pg input,.pg select{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);padding:6px 9px;font-size:.83rem;font-family:var(--font);}
+.pg input:focus,.pg select:focus{outline:none;border-color:var(--blue);}
+
+/* STATS */
+.srow{display:flex;gap:10px;margin-bottom:13px;flex-wrap:wrap;}
+.sc{flex:1;min-width:95px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px;}
+.sv{font-size:1.5rem;font-weight:700;}.sl2{font-size:.67rem;color:var(--muted);margin-top:2px;}
+
+/* LOG */
+.logbox{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;
+  font-family:'Consolas','Courier New',monospace;font-size:.74rem;
+  max-height:150px;overflow-y:auto;line-height:1.6;margin-top:11px;}
+.lok{color:var(--green);}.li{color:var(--blue);}.lw{color:var(--amber);}
+
+/* TABLE */
+.tw{overflow-x:auto;border-radius:8px;border:1px solid var(--border);}
+table{width:100%;border-collapse:collapse;font-size:.75rem;}
+thead tr{background:var(--surface2);}
+th{padding:7px 10px;text-align:left;color:var(--muted);font-size:.64rem;
+  text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);}
+td{padding:6px 10px;border-bottom:1px solid #21262d;vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,255,255,.012);}
+.tfm-match-row td{background:rgba(63,185,80,.05)!important;border-left:2px solid var(--green);}
+
+/* TAGS */
+.tag{display:inline-block;padding:1px 7px;border-radius:4px;font-size:.66rem;font-weight:700;}
+.tbraf{background:rgba(88,166,255,.18);color:var(--blue);}
+.tras{background:rgba(63,185,80,.18);color:var(--green);}
+.twt{background:rgba(188,140,255,.18);color:var(--purple);}
+.tnf1{background:rgba(210,153,34,.18);color:var(--amber);}
+.tmatch{background:rgba(63,185,80,.18);color:var(--green);font-size:.6rem;padding:1px 5px;}
+
+/* VAR PILLS */
+.vpgrid{display:flex;flex-wrap:wrap;gap:6px;margin:7px 0 11px;}
+.vpill{background:var(--surface2);border:1px solid var(--border);border-radius:13px;
+  padding:3px 10px;font-size:.71rem;display:flex;align-items:center;gap:4px;}
+.vdot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+
+/* RULES PANEL — TFM + calculadas */
+.rules-tabs{display:flex;gap:0;border:1px solid var(--border);border-radius:8px;
+  overflow:hidden;margin-bottom:13px;}
+.rtab{flex:1;padding:8px 12px;text-align:center;cursor:pointer;font-size:.77rem;
+  font-weight:600;color:var(--muted);background:var(--bg);transition:all .15s;
+  border-right:1px solid var(--border);}
+.rtab:last-child{border-right:none;}
+.rtab.active{background:var(--surface2);color:var(--text);}
+.rtab:hover:not(.active){color:var(--blue);}
+
+/* TFM RULE CARD */
+.rr{background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  padding:11px 13px;display:flex;gap:11px;align-items:flex-start;margin-bottom:7px;}
+.rr.highlight{border-color:var(--green);background:rgba(63,185,80,.04);}
+.rr-id{font-size:.67rem;color:var(--muted);font-weight:700;min-width:22px;padding-top:2px;}
+.rr-body{flex:1;}
+.rr-ant{font-size:.74rem;color:var(--muted);margin-bottom:3px;}
+.rr-ant span{color:var(--text);}
+.rr-cons{font-size:.74rem;font-weight:700;margin-bottom:5px;}
+.rr-metrics{display:flex;gap:11px;flex-wrap:wrap;}
+.mk{color:var(--muted);font-size:.68rem;}.mv{font-weight:700;font-size:.74rem;}
+
+/* SCATTER */
+.chc{position:relative;background:var(--bg);border-radius:8px;border:1px solid var(--border);padding:11px;}
+.tip{position:absolute;background:var(--surface2);border:1px solid var(--border);
+  border-radius:6px;padding:7px 10px;font-size:.7rem;pointer-events:none;
+  display:none;max-width:260px;line-height:1.5;z-index:10;}
+
+/* FROW */
+.frow{display:flex;gap:9px;margin-bottom:11px;flex-wrap:wrap;align-items:flex-end;}
+.frow .pg{min-width:135px;}
+
+.div{height:1px;background:var(--border);margin:14px 0;}
+.hidden{display:none!important;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.sec-h{font-weight:600;margin-bottom:8px;font-size:.86rem;}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="font-size:1.3rem">🧬</div>
+  <div><h1>Melanoma Subtype Classifier<span class="sub"> — Pipeline + TCGAbiolinks</span></h1></div>
+  <div style="margin-left:auto;display:flex;gap:7px">
+    <span class="badge bb">TCGA-SKCM</span>
+    <span class="badge bg">TFM · UOC/UB 2023</span>
+    <span class="badge br" id="api-badge">API ...</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <aside class="sidebar">
+    <div class="sb-h">Pipeline</div>
+    <div class="si active" id="nav-0" onclick="go(0)"><div class="sn" id="sn-0">1</div><div><div class="sl">Carga de datos</div><div class="ss">TCGAbiolinks / CSV</div></div></div>
+    <div class="si" id="nav-1" onclick="go(1)"><div class="sn" id="sn-1">2</div><div><div class="sl">Preprocesamiento</div><div class="ss">One-hot encoding</div></div></div>
+    <div class="si" id="nav-2" onclick="go(2)"><div class="sn" id="sn-2">3</div><div><div class="sl">FP-Growth</div><div class="ss">min_sup = 0.015</div></div></div>
+    <div class="si" id="nav-3" onclick="go(3)"><div class="sn" id="sn-3">4</div><div><div class="sl">Reglas de asociación</div><div class="ss">conf ≥ 0.85</div></div></div>
+    <div class="si" id="nav-4" onclick="go(4)"><div class="sn" id="sn-4">5</div><div><div class="sl">Filtrado clínico</div><div class="ss">lift>1 · leverage>0 · MUTSUBT</div></div></div>
+    <div class="si" id="nav-5" onclick="go(5)"><div class="sn" id="sn-5">6</div><div><div class="sl">Resultados</div><div class="ss">TFM + calculadas</div></div></div>
+
+    <div class="sb-sep"></div>
+    <div id="api-status">Comprobando API...</div>
+
+    <div class="sb-sep"></div>
+    <div class="sb-h">Contexto</div>
+    <div class="ctx">
+      <span class="ct">Datos</span>
+      <strong>TCGA-SKCM</strong> · 331 pacientes · RNA-seq RSEM · metilación · microRNA<br>
+      <span class="ct">Pipeline R original</span>
+      TCGAbiolinks → log2 → mediana → varianza → FP-Growth<br>
+      <span class="ct">Referencia</span>
+      Cancer Genome Atlas Network. <em>Cell</em> 161(7), 2015
+    </div>
+  </aside>
+
+  <main>
+
+    <!-- STEP 0: CARGA -->
+    <div class="panel" id="step-0">
+      <div class="pt">📂 Paso 1 — Carga de datos</div>
+      <div class="pd">
+        Los datos provienen de <em>TCGAbiolinks</em> (<code>TCGAquery_subtype("skcm")</code>) —
+        el backend R ejecuta esa función y devuelve los 331 pacientes con sus 6 variables del paper Cell 2015.
+        También puedes subir el CSV si ya lo tienes.
+      </div>
+
+      <div class="stabs">
+        <div class="stab active" onclick="swSrc('api')">🔗 Via TCGAbiolinks (R)</div>
+        <div class="stab" onclick="swSrc('upload')">📁 Subir CSV</div>
+      </div>
+
+      <div class="spanel active" id="src-api">
+        <div class="callout cb" id="tcga-info">
+          <span>⏳</span><span>Comprobando disponibilidad del backend R...</span>
+        </div>
+        <div class="rbrow">
+          <button class="btn bp" id="btn-load-tcga" onclick="loadFromTCGA()" disabled>
+            ▶ Cargar datos TCGA-SKCM
+          </button>
+          <span class="rs" id="st-load"></span>
+        </div>
+      </div>
+
+      <div class="spanel" id="src-upload">
+        <div class="dz" id="dz" onclick="document.getElementById('fileInput').click()">
+          <div style="font-size:1.5rem;margin-bottom:5px">📄</div>
+          <div style="color:var(--muted);font-size:.79rem">
+            <strong style="color:var(--blue)">Haz clic</strong> o arrastra el CSV<br>
+            <span style="font-size:.7rem">Columnas: MUTATIONSUBTYPES, UV-signature, RNASEQ-CLUSTER_CONSENHIER, MethTypes.201408, MIRCluster, LYMPHOCYTE.SCORE</span>
+          </div>
+        </div>
+        <input type="file" id="fileInput" accept=".csv">
+      </div>
+
+      <div id="data-preview" class="hidden" style="margin-top:14px">
+        <div class="div"></div>
+        <div class="srow" id="data-stats"></div>
+        <div class="tw" id="preview-table"></div>
+      </div>
+    </div>
+
+    <!-- STEP 1: PREPROC -->
+    <div class="panel" id="step-1">
+      <div class="pt">⚙️ Paso 2 — Preprocesamiento</div>
+      <div class="pd">
+        One-hot encoding de las 6 variables categóricas. <code>LYMPHOCYTE.SCORE</code>
+        (0–6) se discretiza en bins: <em>0.0</em>, <em>low (1–3)</em>, <em>high (4+)</em>.
+      </div>
+      <div id="pre-info" class="callout cb"><span>⏳</span> Carga los datos primero.</div>
+      <div id="pre-result" class="hidden">
+        <div class="vpgrid" id="var-pills"></div>
+        <div class="srow" id="pre-stats"></div>
+      </div>
+    </div>
+
+    <!-- STEP 2-4: PIPELINE (ejecutado en backend) -->
+    <div class="panel" id="step-2">
+      <div class="pt">🚀 Pasos 3–5 — FP-Growth + Reglas + Filtrado</div>
+      <div class="pd">
+        El backend Python ejecuta el pipeline completo equivalente al notebook del TFM:
+        <code>fpgrowth()</code> → <code>association_rules()</code> → filtro lift/leverage → filtro consecuente=MUTATIONSUBTYPES.
+      </div>
+      <div class="pgrid">
+        <div class="pg"><label>Soporte mín. <span style="color:var(--blue)">(TFM: 0.015)</span></label>
+          <input type="number" id="pm-sup" value="0.015" min="0.001" max="1" step="0.001"></div>
+        <div class="pg"><label>Confianza mín. <span style="color:var(--blue)">(TFM: 0.85)</span></label>
+          <input type="number" id="pm-conf" value="0.85" min="0" max="1" step="0.01"></div>
+        <div class="pg"><label>Lift mín. <span style="color:var(--blue)">(TFM: 1.0)</span></label>
+          <input type="number" id="pm-lift" value="1.0" min="0" max="10" step="0.1"></div>
+        <div class="pg"><label>Leverage mín. <span style="color:var(--blue)">(TFM: 0.0)</span></label>
+          <input type="number" id="pm-lev" value="0.0" min="-1" max="1" step="0.001"></div>
+      </div>
+      <div class="rbrow">
+        <button class="btn bp" id="btn-run" onclick="runPipeline()" disabled>
+          ▶ Ejecutar pipeline completo
+        </button>
+        <span class="rs" id="st-run"></span>
+      </div>
+      <div id="pipeline-log" class="logbox hidden"></div>
+      <div id="pipeline-stats" class="hidden" style="margin-top:12px">
+        <div class="srow" id="pipe-stat-row"></div>
+      </div>
+    </div>
+
+    <!-- STEP 5: RESULTADOS -->
+    <div class="panel" id="step-5">
+      <div class="pt">📊 Paso 6 — Resultados</div>
+      <div id="res-ph" class="callout cb"><span>⏳</span> Ejecuta el pipeline para ver los resultados.</div>
+
+      <div id="res-content" class="hidden">
+
+        <!-- SCATTER -->
+        <div class="sec-h">Soporte vs. Confianza — reglas clínicas calculadas</div>
+        <div class="chc" style="margin-bottom:16px">
+          <canvas id="sc" width="680" height="260"></canvas>
+          <div class="tip" id="tip"></div>
+        </div>
+
+        <!-- TABS REGLAS -->
+        <div class="rules-tabs">
+          <div class="rtab active" id="rt-0" onclick="switchRulesTab(0)">
+            📋 Reglas TFM <span id="tfm-count" class="badge bb" style="margin-left:5px">11</span>
+          </div>
+          <div class="rtab" id="rt-1" onclick="switchRulesTab(1)">
+            🔬 Calculadas por el pipeline <span id="calc-count" class="badge bb" style="margin-left:5px">—</span>
+          </div>
+          <div class="rtab" id="rt-2" onclick="switchRulesTab(2)">
+            ✅ Coincidencias TFM ↔ Pipeline <span id="match-count" class="badge bg" style="margin-left:5px">—</span>
+          </div>
+        </div>
+
+        <!-- TAB 0: Reglas TFM -->
+        <div id="rules-panel-0">
+          <div class="callout cg" style="margin-bottom:11px">
+            <span>📖</span>
+            <span>Las <strong>11 reglas de la Tabla 3 de la memoria</strong> — resultado final del TFM original.
+            Las reglas marcadas con ✅ también han sido encontradas por el pipeline calculado sobre los datos actuales.</span>
+          </div>
+          <div id="tfm-rules-list"></div>
+        </div>
+
+        <!-- TAB 1: Calculadas -->
+        <div id="rules-panel-1" class="hidden">
+          <div class="callout cb" style="margin-bottom:11px">
+            <span>ℹ️</span>
+            <span>Reglas calculadas por el pipeline sobre los datos cargados, con consecuente <code>MUTATIONSUBTYPES</code>,
+            lift > 1 y leverage > 0. Las marcadas con <span class="badge bg">✅ TFM</span> coinciden con la Tabla 3.</span>
+          </div>
+          <div class="frow">
+            <div class="pg"><label>Filtrar subtipo</label>
+              <select id="f-sub" onchange="renderCalcTable()">
+                <option value="">Todos</option>
+                <option value="BRAF">BRAF</option>
+                <option value="RAS">RAS</option>
+                <option value="Triple_WT">Triple WT</option>
+                <option value="NF1">NF1</option>
+              </select></div>
+            <div class="pg"><label>Buscar</label>
+              <input type="text" id="f-txt" placeholder="immune, keratin, UV…" oninput="renderCalcTable()"></div>
+            <button class="btn bo" onclick="exportCSV()">⬇ Exportar CSV</button>
+          </div>
+          <div class="tw" id="calc-rules-table"></div>
+          <div id="calc-foot" style="padding:7px 10px;font-size:.71rem;color:var(--muted)"></div>
+        </div>
+
+        <!-- TAB 2: Coincidencias -->
+        <div id="rules-panel-2" class="hidden">
+          <div class="callout cg" style="margin-bottom:11px">
+            <span>✅</span>
+            <span>Reglas calculadas por el pipeline que <strong>coinciden exactamente</strong>
+            (mismo antecedente y consecuente) con las reglas de la Tabla 3 del TFM.
+            Esto valida la reproducibilidad del análisis.</span>
+          </div>
+          <div id="match-rules-list"></div>
+          <div id="match-summary" style="margin-top:12px"></div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let rawData = [], pipelineResult = null;
+const API = window.location.origin; // mismo servidor
+
+// ============================================================
+// NAV
+// ============================================================
+function go(i) {
+  document.getElementById('step-'+i)?.scrollIntoView({behavior:'smooth',block:'start'});
+  document.querySelectorAll('.si').forEach(el=>el.classList.remove('active'));
+  document.getElementById('nav-'+i)?.classList.add('active');
+}
+function setSt(i, s) {
+  const sn=document.getElementById('sn-'+i), nav=document.getElementById('nav-'+i);
+  if(!sn||!nav) return;
+  nav.classList.remove('done','running');
+  if(s==='done'){nav.classList.add('done');sn.textContent='✓';}
+  else if(s==='running'){nav.classList.add('running');sn.textContent='…';}
+  else sn.textContent=i+1;
+}
+function swSrc(id) {
+  document.querySelectorAll('.stab').forEach((t,i)=>t.classList.toggle('active',['api','upload'][i]===id));
+  document.querySelectorAll('.spanel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('src-'+id)?.classList.add('active');
+}
+function switchRulesTab(i) {
+  [0,1,2].forEach(j=>{
+    document.getElementById('rt-'+j)?.classList.toggle('active',j===i);
+    const p=document.getElementById('rules-panel-'+j);
+    if(p) p.classList.toggle('hidden',j!==i);
+  });
+}
+
+// ============================================================
+// API STATUS CHECK
+// ============================================================
+async function checkAPI() {
+  try {
+    const r = await fetch(`${API}/health`, {signal: AbortSignal.timeout(5000)});
+    const data = await r.json();
+    document.getElementById('api-badge').textContent = 'API ✓';
+    document.getElementById('api-badge').className = 'badge bg';
+
+    // Comprobar estado TCGAbiolinks
+    const status = await fetch(`${API}/api/tcga-status`).then(r=>r.json());
+    const rAvail = status.rpy2_available;
+    const cached = status.cache_rds || status.cache_csv;
+
+    const infoEl = document.getElementById('tcga-info');
+    const btn = document.getElementById('btn-load-tcga');
+    btn.disabled = false;
+
+    if (cached) {
+      infoEl.className = 'callout cg';
+      infoEl.innerHTML = '<span>✅</span><span>Datos TCGA-SKCM en caché — carga instantánea.</span>';
+    } else if (rAvail) {
+      infoEl.className = 'callout cb';
+      infoEl.innerHTML = '<span>ℹ️</span><span>Backend R disponible. La primera carga puede tardar ~30s mientras TCGAbiolinks descarga los datos.</span>';
+    } else {
+      infoEl.className = 'callout ca';
+      infoEl.innerHTML = '<span>⚠️</span><span>rpy2 no disponible en este entorno. Usa la opción "Subir CSV".</span>';
+      btn.disabled = true;
+    }
+
+    document.getElementById('api-status').innerHTML =
+      `<span class="status-dot ${rAvail?'dot-ok':'dot-warn'}"></span>` +
+      `R: ${rAvail?'OK':'no disponible'}<br>` +
+      `<span class="status-dot ${cached?'dot-ok':'dot-warn'}"></span>` +
+      `Cache: ${cached?'listo':'no cacheado'}`;
+
+  } catch(e) {
+    document.getElementById('api-badge').textContent = 'API ✗';
+    document.getElementById('api-badge').className = 'badge br';
+    document.getElementById('api-status').innerHTML =
+      '<span class="status-dot dot-err"></span>Backend no disponible';
+    document.getElementById('tcga-info').className = 'callout cr';
+    document.getElementById('tcga-info').innerHTML =
+      '<span>✗</span><span>No se puede conectar al backend. ¿Está el servidor ejecutándose?</span>';
+  }
+}
+
+// ============================================================
+// STEP 0: CARGA
+// ============================================================
+async function loadFromTCGA() {
+  const btn = document.getElementById('btn-load-tcga');
+  const st = document.getElementById('st-load');
+  btn.disabled = true;
+  st.textContent = '⏳ Cargando desde TCGAbiolinks...';
+  setSt(0, 'running');
+
+  try {
+    const r = await fetch(`${API}/api/tcga-data`);
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    rawData = data.data;
+    const src = data.source === 'tcgabiolinks_r' ? 'TCGAbiolinks (R)' : 'caché local';
+    st.textContent = `✓ ${rawData.length} pacientes cargados desde ${src}`;
+    setSt(0, 'done');
+    processLoadedData();
+  } catch(e) {
+    st.textContent = `✗ Error: ${e.message}`;
+    setSt(0, '');
+    btn.disabled = false;
+  }
+}
+
+// UPLOAD
+document.getElementById('fileInput').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  Papa.parse(f, {header:true, skipEmptyLines:true, complete: r => {
+    rawData = r.data;
+    processLoadedData();
+  }});
+});
+const dzEl = document.getElementById('dz');
+dzEl.addEventListener('dragover', e=>{e.preventDefault();dzEl.classList.add('drag');});
+dzEl.addEventListener('dragleave', ()=>dzEl.classList.remove('drag'));
+dzEl.addEventListener('drop', e=>{
+  e.preventDefault();dzEl.classList.remove('drag');
+  Papa.parse(e.dataTransfer.files[0],{header:true,skipEmptyLines:true,complete:r=>{rawData=r.data;processLoadedData();}});
+});
+
+function processLoadedData() {
+  setSt(0, 'done');
+  const cols = Object.keys(rawData[0]||{});
+  const nulls = rawData.filter(r=>Object.values(r).some(v=>v===''||v==null)).length;
+
+  document.getElementById('data-stats').innerHTML =
+    mkSc(rawData.length,'Pacientes','var(--blue)') +
+    mkSc(cols.length,'Variables','var(--green)') +
+    mkSc(nulls,'Nulos','var(--amber)');
+
+  const prev = rawData.slice(0,8);
+  let t = `<table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>`;
+  prev.forEach(row=>{t+=`<tr>${cols.map(c=>`<td style="font-size:.72rem">${row[c]??'—'}</td>`).join('')}</tr>`;});
+  document.getElementById('preview-table').innerHTML = t+'</tbody></table>';
+  document.getElementById('data-preview').classList.remove('hidden');
+
+  // Preprocesamiento info
+  document.getElementById('pre-info').classList.add('hidden');
+  document.getElementById('pre-result').classList.remove('hidden');
+  const clrs=['var(--blue)','var(--green)','var(--amber)','var(--red)','var(--purple)','#79c0ff'];
+  document.getElementById('var-pills').innerHTML = cols.map((c,i)=>`
+    <div class="vpill"><div class="vdot" style="background:${clrs[i%clrs.length]}"></div>
+    <strong>${c}</strong></div>`).join('');
+
+  // Contar columnas one-hot estimadas
+  const catCols = cols.filter(c=>c!=='LYMPHOCYTE.SCORE');
+  const est = catCols.reduce((a,c)=>{
+    const vals=[...new Set(rawData.map(r=>r[c]).filter(v=>v))];
+    return a+vals.length;
+  },0) + 3; // 3 bins de LSCORE
+  document.getElementById('pre-stats').innerHTML =
+    mkSc(est,'Columnas binarias estimadas','var(--blue)') +
+    mkSc(rawData.length,'Pacientes','var(--green)');
+
+  setSt(1, 'done');
+  document.getElementById('btn-run').disabled = false;
+}
+
+// ============================================================
+// STEP 2-4: PIPELINE (via backend)
+// ============================================================
+function addLog(msg, type='li') {
+  const box = document.getElementById('pipeline-log');
+  box.classList.remove('hidden');
+  box.innerHTML += `<div class="${type}">${msg}</div>`;
+  box.scrollTop = 99999;
+}
+
+async function runPipeline() {
+  const btn = document.getElementById('btn-run');
+  btn.disabled = true;
+  document.getElementById('st-run').textContent = '⏳ Ejecutando en el servidor...';
+  document.getElementById('pipeline-log').innerHTML = '';
+  [2,3,4].forEach(i=>setSt(i,'running'));
+
+  const params = {
+    min_support: parseFloat(document.getElementById('pm-sup').value),
+    min_confidence: parseFloat(document.getElementById('pm-conf').value),
+    min_lift: parseFloat(document.getElementById('pm-lift').value),
+    min_leverage: parseFloat(document.getElementById('pm-lev').value),
+  };
+
+  addLog(`[Config] min_support=${params.min_support} · min_confidence=${params.min_confidence}`);
+  addLog(`[Config] min_lift=${params.min_lift} · min_leverage=${params.min_leverage}`);
+
+  try {
+    const r = await fetch(`${API}/api/run-pipeline`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(params),
+    });
+
+    if (!r.ok) {
+      const err = await r.text();
+      throw new Error(err);
+    }
+
+    pipelineResult = await r.json();
+
+    addLog(`✓ FP-Growth: ${pipelineResult.n_itemsets} itemsets frecuentes`, 'lok');
+    addLog(`✓ Reglas generadas: ${pipelineResult.n_rules_total}`, 'lok');
+    addLog(`✓ Filtradas (lift>1, lev>0): ${pipelineResult.n_rules_filtered}`, 'lok');
+    addLog(`✓ Reglas clínicas (cons=MUTATIONSUBTYPES): ${pipelineResult.n_rules_clinical}`, 'lok');
+    addLog(`✓ Coincidencias con TFM: ${pipelineResult.tfm_match_stats?.matched || 0}/${pipelineResult.tfm_match_stats?.tfm_rules_total}`, 'lok');
+
+    [2,3,4].forEach(i=>setSt(i,'done'));
+    setSt(5,'done');
+    document.getElementById('st-run').textContent = `✓ Pipeline completado`;
+    btn.disabled = false;
+
+    document.getElementById('pipeline-stats').classList.remove('hidden');
+    document.getElementById('pipe-stat-row').innerHTML =
+      mkSc(pipelineResult.n_itemsets,'Itemsets','var(--blue)') +
+      mkSc(pipelineResult.n_rules_total,'Reglas totales','var(--green)') +
+      mkSc(pipelineResult.n_rules_clinical,'Reglas clínicas','var(--amber)') +
+      mkSc(pipelineResult.tfm_match_stats?.matched||0,'Coinciden con TFM','var(--purple)');
+
+    renderResults();
+
+  } catch(e) {
+    addLog(`✗ Error: ${e.message}`, 'lw');
+    [2,3,4].forEach(i=>setSt(i,''));
+    btn.disabled = false;
+    document.getElementById('st-run').textContent = '✗ Error en el pipeline';
+  }
+}
+
+// ============================================================
+// RESULTADOS
+// ============================================================
+function getTag(val) {
+  if (!val) return '';
+  if (val.includes('BRAF')) return '<span class="tag tbraf">BRAF</span>';
+  if (val.includes('RAS'))  return '<span class="tag tras">RAS</span>';
+  if (val.includes('Triple')) return '<span class="tag twt">Triple WT</span>';
+  if (val.includes('NF1'))  return '<span class="tag tnf1">NF1</span>';
+  return '';
+}
+
+function getTagFromAntCons(rule) {
+  const all = [...(rule.antecedents||rule.ant||[]), ...(rule.consequents||rule.cons||[])].join(' ');
+  return getTag(all);
+}
+
+function renderResults() {
+  if (!pipelineResult) return;
+  document.getElementById('res-ph').classList.add('hidden');
+  document.getElementById('res-content').classList.remove('hidden');
+
+  // Actualizar contadores de tabs
+  document.getElementById('tfm-count').textContent = pipelineResult.tfm_rules?.length || 11;
+  document.getElementById('calc-count').textContent = pipelineResult.n_rules_clinical || 0;
+  document.getElementById('match-count').textContent = pipelineResult.tfm_match_stats?.matched || 0;
+
+  renderTFMRules();
+  renderCalcTable();
+  renderMatchRules();
+  renderScatter();
+  setTimeout(()=>go(5), 200);
+}
+
+// TAB 0: Reglas TFM
+function renderTFMRules() {
+  const tfmRules = pipelineResult.tfm_rules || [];
+  const calcRules = pipelineResult.rules_clinical || [];
+
+  // Qué reglas TFM han sido encontradas por el pipeline
+  const foundIds = new Set(
+    calcRules.filter(r=>r.tfm_match).map(r=>r.tfm_match)
+  );
+
+  const colMap = {'BRAF_Hotspot_Mutants':'var(--blue)','RAS_Hotspot_Mutants':'var(--green)',
+    'Triple_WT':'var(--purple)','NF1_Any_Mutants':'var(--amber)'};
+
+  document.getElementById('tfm-rules-list').innerHTML = tfmRules.map(r => {
+    const matched = foundIds.has(r.id);
+    const consVal = (r.cons[0]||'').replace('MUTATIONSUBTYPES=','');
+    const col = colMap[consVal] || 'var(--text)';
+    return `<div class="rr ${matched?'highlight':''}">
+      <div class="rr-id">#${r.id}${matched?' ✅':''}</div>
+      <div class="rr-body">
+        <div class="rr-ant">Si: <span>${r.ant.join(' + ')}</span></div>
+        <div class="rr-cons" style="color:${col}">→ ${r.cons[0]}</div>
+        <div class="rr-metrics">
+          <div class="rr-m"><span class="mk">Conf </span><span class="mv">${r.conf.toFixed(2)}</span></div>
+          <div class="rr-m"><span class="mk">Sop </span><span class="mv">${r.sup.toFixed(2)}</span></div>
+          <div class="rr-m"><span class="mk">Lift </span><span class="mv" style="color:${r.lift>5?'var(--red)':r.lift>3?'var(--amber)':'var(--green)'}">${r.lift.toFixed(2)}</span></div>
+          <div class="rr-m"><span class="mk">Lvg </span><span class="mv">${r.lvg.toFixed(2)}</span></div>
+          ${r.conf===1.0?'<span class="badge bg" style="font-size:.6rem;padding:1px 5px">Conf=1.0</span>':''}
+          ${matched?'<span class="badge bg" style="font-size:.6rem;padding:1px 5px">✅ Reproducida</span>':''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// TAB 1: Calculadas
+function renderCalcTable() {
+  if (!pipelineResult) return;
+  const sub = document.getElementById('f-sub')?.value || '';
+  const txt = (document.getElementById('f-txt')?.value || '').toLowerCase();
+
+  let rows = (pipelineResult.rules_clinical || []).filter(r => {
+    const all = [...r.antecedents, ...r.consequents].join(' ');
+    return (!sub || all.includes(sub)) && (!txt || all.toLowerCase().includes(txt));
+  }).sort((a,b) => b.lift - a.lift);
+
+  let h = `<table><thead><tr>
+    <th>Match TFM</th><th>Subtipo</th><th>Antecedentes</th><th>→ Consecuente</th>
+    <th>Sop</th><th>Conf</th><th>Lift</th><th>Leverage</th>
+  </tr></thead><tbody>`;
+
+  if (!rows.length) {
+    h += `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:18px">Sin reglas para los filtros aplicados</td></tr>`;
+  } else {
+    rows.slice(0,100).forEach(r => {
+      const matched = r.tfm_match;
+      const liftCol = r.lift>5?'var(--red)':r.lift>3?'var(--amber)':r.lift>1.5?'var(--blue)':'var(--text)';
+      const cons = r.consequents.join(', ');
+      const trClass = matched ? 'tfm-match-row' : '';
+      h += `<tr class="${trClass}">
+        <td>${matched?`<span class="badge bg" style="font-size:.6rem">✅ #${matched}</span>`:'—'}</td>
+        <td>${getTagFromAntCons(r)}</td>
+        <td style="font-size:.7rem;max-width:180px">${r.antecedents.join('<br>')}</td>
+        <td style="font-size:.7rem;color:var(--green)">${cons}</td>
+        <td>${r.support}</td><td>${r.confidence}</td>
+        <td style="color:${liftCol};font-weight:700">${r.lift}</td>
+        <td>${r.leverage}</td>
+      </tr>`;
+    });
+  }
+  h += '</tbody></table>';
+  document.getElementById('calc-rules-table').innerHTML = h;
+  document.getElementById('calc-foot').textContent =
+    rows.length > 100 ? `Mostrando 100 de ${rows.length}` :
+    rows.length ? `${rows.length} regla(s) · Lift descendente` : '';
+}
+
+// TAB 2: Coincidencias
+function renderMatchRules() {
+  if (!pipelineResult) return;
+  const matched = (pipelineResult.rules_clinical || []).filter(r => r.tfm_match);
+  const tfmRules = pipelineResult.tfm_rules || [];
+
+  if (!matched.length) {
+    document.getElementById('match-rules-list').innerHTML =
+      '<div class="callout ca"><span>⚠️</span><span>Ninguna regla calculada coincide exactamente con las del TFM con los parámetros actuales. Prueba con min_support=0.015 y min_confidence=0.85.</span></div>';
+    return;
+  }
+
+  document.getElementById('match-rules-list').innerHTML = matched.map(r => {
+    const tfmRule = tfmRules.find(t=>t.id===r.tfm_match);
+    const cons = r.consequents.join(', ');
+    return `<div class="rr highlight">
+      <div class="rr-id">✅ TFM #${r.tfm_match}</div>
+      <div class="rr-body">
+        <div class="rr-ant">Si: <span>${r.antecedents.join(' + ')}</span></div>
+        <div class="rr-cons" style="color:var(--green)">→ ${cons}</div>
+        <div class="rr-metrics">
+          <div class="rr-m"><span class="mk">Conf </span><span class="mv">${r.confidence}</span>
+            ${tfmRule?`<span style="color:var(--muted);font-size:.65rem"> (TFM: ${tfmRule.conf.toFixed(2)})</span>`:''}
+          </div>
+          <div class="rr-m"><span class="mk">Lift </span><span class="mv">${r.lift}</span>
+            ${tfmRule?`<span style="color:var(--muted);font-size:.65rem"> (TFM: ${tfmRule.lift.toFixed(2)})</span>`:''}
+          </div>
+          <div class="rr-m"><span class="mk">Sop </span><span class="mv">${r.support}</span></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const stats = pipelineResult.tfm_match_stats || {};
+  document.getElementById('match-summary').innerHTML = `
+    <div class="callout cg">
+      <span>📊</span>
+      <span><strong>${stats.matched} de ${stats.tfm_rules_total}</strong> reglas del TFM
+      reproducidas por el pipeline sobre los datos actuales.
+      ${stats.matched === stats.tfm_rules_total ? '🎉 Reproducibilidad completa.' : ''}
+      </span>
+    </div>`;
+}
+
+// SCATTER
+function renderScatter() {
+  if (!pipelineResult) return;
+  const rules = pipelineResult.rules_clinical || [];
+  const cv = document.getElementById('sc');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const pad = {t:16,r:70,b:42,l:50};
+  ctx.clearRect(0,0,W,H);
+  if (!rules.length) return;
+
+  const sups=rules.map(r=>r.support), confs=rules.map(r=>r.confidence), lifts=rules.map(r=>r.lift);
+  const [ms,xs]=[Math.min(...sups),Math.max(...sups)];
+  const [mc,xc]=[Math.min(...confs),1];
+  const [ml,xl]=[Math.min(...lifts),Math.max(...lifts)];
+  const X=v=>pad.l+((v-ms)/(xs-ms+1e-5))*(W-pad.l-pad.r);
+  const Y=v=>H-pad.b-((v-mc)/(xc-mc+1e-5))*(H-pad.t-pad.b);
+
+  ctx.fillStyle='#0d1117';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#21262d';ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){const y=pad.t+i*(H-pad.t-pad.b)/4;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();}
+  ctx.strokeStyle='#30363d';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  ctx.fillStyle='#8b949e';ctx.font='9px Segoe UI,sans-serif';
+  ctx.textAlign='center';ctx.fillText('Soporte',W/2-pad.r/2,H-3);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('Confianza',0,0);ctx.restore();
+  ctx.font='8px monospace';ctx.fillStyle='#8b949e';
+  for(let i=0;i<=4;i++){
+    ctx.textAlign='center';ctx.fillText((ms+i*(xs-ms)/4).toFixed(3),X(ms+i*(xs-ms)/4),H-pad.b+11);
+    ctx.textAlign='right';ctx.fillText((mc+i*(xc-mc)/4).toFixed(2),pad.l-3,Y(mc+i*(xc-mc)/4)+3);
+  }
+
+  rules.forEach(r => {
+    const x=X(r.support), y=Y(r.confidence);
+    const t=(r.lift-ml)/(xl-ml+1e-5);
+    const col=lerp('#3fb950','#f85149',t);
+    const isTFM = r.tfm_match;
+    ctx.beginPath();
+    ctx.arc(x,y,isTFM?7:4.5,0,Math.PI*2);
+    ctx.fillStyle=col+(isTFM?'ee':'99');
+    ctx.fill();
+    ctx.strokeStyle=isTFM?'#fff':col;
+    ctx.lineWidth=isTFM?1.5:1;
+    ctx.stroke();
+    if(isTFM){
+      ctx.fillStyle='#fff';ctx.font='bold 8px monospace';ctx.textAlign='center';
+      ctx.fillText(r.tfm_match,x,y+3);
+    }
+  });
+
+  // Leyenda
+  ctx.beginPath();ctx.arc(W-pad.r+16,pad.t+8,4.5,0,Math.PI*2);ctx.fillStyle='#3fb95099';ctx.fill();ctx.strokeStyle='#3fb950';ctx.lineWidth=1;ctx.stroke();
+  ctx.fillStyle='#8b949e';ctx.font='8px sans-serif';ctx.textAlign='left';ctx.fillText('Lift bajo',W-pad.r+23,pad.t+11);
+  ctx.beginPath();ctx.arc(W-pad.r+16,pad.t+22,4.5,0,Math.PI*2);ctx.fillStyle='#f8514999';ctx.fill();ctx.strokeStyle='#f85149';ctx.lineWidth=1;ctx.stroke();
+  ctx.fillText('Lift alto',W-pad.r+23,pad.t+25);
+  ctx.beginPath();ctx.arc(W-pad.r+16,pad.t+38,7,0,Math.PI*2);ctx.fillStyle='#d2992299';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle='#fff';ctx.font='bold 7px monospace';ctx.textAlign='center';ctx.fillText('N',W-pad.r+16,pad.t+41);
+  ctx.fillStyle='#8b949e';ctx.font='8px sans-serif';ctx.textAlign='left';ctx.fillText('Regla TFM #N',W-pad.r+25,pad.t+41);
+
+  const tipEl=document.getElementById('tip');
+  cv.onmousemove=e=>{
+    const rc=cv.getBoundingClientRect(),mx=e.clientX-rc.left,my=e.clientY-rc.top;
+    let f=null;
+    rules.forEach(r=>{if(Math.abs(mx-X(r.support))<9&&Math.abs(my-Y(r.confidence))<9)f=r;});
+    if(f){
+      tipEl.style.display='block';tipEl.style.left=(mx+12)+'px';tipEl.style.top=(my-18)+'px';
+      tipEl.innerHTML=`${f.tfm_match?`<strong>✅ Regla TFM #${f.tfm_match}</strong><br>`:''}
+        <strong>${f.antecedents.join(', ')}</strong><br>→ ${f.consequents.join(', ')}<br>
+        <span style="color:var(--muted)">Lift:</span> ${f.lift} &nbsp;
+        <span style="color:var(--muted)">Conf:</span> ${f.confidence}<br>
+        <span style="color:var(--muted)">Sop:</span> ${f.support} &nbsp;
+        <span style="color:var(--muted)">Lev:</span> ${f.leverage}`;
+    } else tipEl.style.display='none';
+  };
+  cv.onmouseleave=()=>tipEl.style.display='none';
+}
+
+function lerp(h1,h2,t){
+  const c=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+  const[r1,g1,b1]=c(h1),[r2,g2,b2]=c(h2);
+  return '#'+[r1+(r2-r1)*t,g1+(g2-g1)*t,b1+(b2-b1)*t].map(x=>Math.round(x).toString(16).padStart(2,'0')).join('');
+}
+
+function mkSc(v,l,c){return`<div class="sc"><div class="sv" style="color:${c}">${v}</div><div class="sl2">${l}</div></div>`;}
+
+function exportCSV() {
+  if (!pipelineResult) return;
+  const rules = pipelineResult.rules_clinical || [];
+  const h = ['tfm_match','antecedents','consequents','support','confidence','lift','leverage','conviction'];
+  const rows = rules.map(r=>[r.tfm_match||'',r.antecedents.join('; '),r.consequents.join('; '),r.support,r.confidence,r.lift,r.leverage,r.conviction]);
+  const csv = [h,...rows].map(r=>r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = 'reglas_melanoma_calculadas.csv';
+  a.click();
+}
+
+// Arrancar
+checkAPI();
+</script>
+</body>
+</html>
