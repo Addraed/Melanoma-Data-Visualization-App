@@ -2,11 +2,14 @@
 FROM rocker/r-ver:4.3.3
 
 # Instalar Python y dependencias del sistema
+# gcc, g++, make son necesarios para compilar rpy2
 RUN apt-get update && apt-get install -y \
     python3 python3-pip python3-dev \
+    gcc g++ make \
     libcurl4-openssl-dev libssl-dev libxml2-dev \
     libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
     libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev \
+    r-base-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar BiocManager y TCGAbiolinks en R
@@ -29,6 +32,8 @@ RUN R -e "\
 WORKDIR /app
 
 # Instalar dependencias Python
+# rpy2 necesita R_HOME configurado para compilar correctamente
+ENV R_HOME=/usr/local/lib/R
 COPY web_app/requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
