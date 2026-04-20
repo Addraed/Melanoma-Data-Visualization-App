@@ -1,7 +1,9 @@
+setuptools==68.2.2
+wheel==0.41.3
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 pandas==2.2.2
 numpy==1.26.4
 mlxtend==0.23.1
 python-multipart==0.0.9
-rpy2==3.5.16
+rpy2==3.5.11
