@@ -2,7 +2,6 @@
 FROM rocker/r-ver:4.3.3
 
 # Instalar Python y dependencias del sistema
-# gcc, g++, make son necesarios para compilar rpy2
 RUN apt-get update && apt-get install -y \
     python3 python3-pip python3-dev \
     gcc g++ make \
@@ -19,7 +18,7 @@ RUN R -e "BiocManager::install('TCGAbiolinks', ask=FALSE, update=FALSE)"
 # Crear directorio de caché
 RUN mkdir -p /data_cache /repo_data
 
-# Pre-cachear datos SKCM en build time (falla silenciosamente si no hay red)
+# Pre-cachear datos SKCM en build time
 RUN R -e "\
   tryCatch({\
     library(TCGAbiolinks);\
@@ -31,9 +30,13 @@ RUN R -e "\
 
 WORKDIR /app
 
-# Instalar dependencias Python
-# rpy2 necesita R_HOME configurado para compilar correctamente
+# Fijar setuptools ANTES de instalar rpy2 — evita el error de setuptools.command.build
+RUN pip3 install --no-cache-dir "setuptools==68.2.2" "wheel==0.41.3"
+
+# R_HOME necesario para que rpy2 encuentre R al compilar
 ENV R_HOME=/usr/local/lib/R
+
+# Instalar el resto de dependencias
 COPY web_app/requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
