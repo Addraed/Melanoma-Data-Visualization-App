@@ -2,7 +2,8 @@ services:
   - type: web
     name: melanoma-pipeline
     runtime: docker
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./web_app/Dockerfile
+    dockerContext: .
     plan: free
     envVars:
       - key: PORT
