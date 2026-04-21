@@ -270,7 +270,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
       <div class="spanel" id="src-synthetic">
         <div class="callout ca">
           <span>⚠️</span>
-          <span>Datos sintéticos con las <strong>distribuciones del TFM</strong> y correlaciones de las 11 reglas (Cell 2015). No son datos reales TCGA.</span>
+          <span>Datos sintéticos con las <strong>distribuciones del TFM</strong> y correlaciones de las 11 reglas (Cell 2015). No son datos reales TCGA — útiles para probar el pipeline sin acceso a R.</span>
         </div>
         <div class="g2" style="margin-bottom:12px">
           <div class="pg"><label>Nº pacientes</label><input type="number" id="synth-n" value="331" min="50" max="1000"></div>
@@ -417,7 +417,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
 
     <!-- STEP 7: GRAFO -->
     <div class="panel" id="step-6">
-      <div class="pt">🕸 Visualización </div>
+      <div class="pt">🕸 Visualización de reglas de asociación</div>
       <div class="pd">
         Visualización interactiva de las reglas calculadas. Nodos coloreados por subtipo de mutación,
         aristas por lift (verde→rojo). Las reglas del TFM aparecen en naranja discontinuo.
@@ -982,19 +982,17 @@ async function loadSynthetic() {
 checkAPI();
 
 // ============================================================
-// GRAFO — Paso 7
+// GRÁFICO
 // ============================================================
 let gNodes = [], gEdges = [], gNodeMap = {};
 let gCanvas, gCtx, gW, gH;
 let gTransform = {x:0, y:0, scale:1};
-let gDragging = false, gDragStart = {}, gTransformStart = {};
+let gDragging = false, gDragStart = {x:0,y:0}, gTransformStart = {x:0,y:0};
 let gHovered = null, gSelected = null;
 let gAnimFrame = null;
 let gAllRules = [], gTFMRules = [];
 
-const GCOLS = {
-  BRAF:'#58a6ff', RAS:'#3fb950', Triple_WT:'#bc8cff', NF1:'#d29922', var:'#8b949e'
-};
+const GCOLS = { BRAF:'#58a6ff', RAS:'#3fb950', Triple_WT:'#bc8cff', NF1:'#d29922', var:'#8b949e' };
 
 function gSubColor(label) {
   if(label.includes('BRAF')) return GCOLS.BRAF;
@@ -1014,14 +1012,26 @@ function initGraph(rules, tfmRules) {
   gAllRules = rules;
   gTFMRules = tfmRules;
 
+  // Mostrar el panel primero para que el canvas tenga dimensiones
+  document.getElementById('graph-ph').classList.add('hidden');
+  document.getElementById('graph-wrap').classList.remove('hidden');
+
   gCanvas = document.getElementById('graph-canvas');
   if (!gCanvas) return;
   gCtx = gCanvas.getContext('2d');
 
-  // Ajustar tamaño real del canvas
-  const rect = gCanvas.parentElement.getBoundingClientRect();
-  gW = gCanvas.width = rect.width || 800;
-  gH = gCanvas.height = 600;
+  // Calcular dimensiones reales con devicePixelRatio para nitidez
+  const wrap = gCanvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = wrap.clientWidth;
+  const cssH = 580;
+  gCanvas.style.width = cssW + 'px';
+  gCanvas.style.height = cssH + 'px';
+  gCanvas.width  = cssW * dpr;
+  gCanvas.height = cssH * dpr;
+  gCtx.scale(dpr, dpr);
+  gW = cssW;
+  gH = cssH;
 
   // Marcar reglas TFM
   gAllRules.forEach(r => {
@@ -1035,9 +1045,6 @@ function initGraph(rules, tfmRules) {
   attachGraphEvents();
   rebuildGraph();
   setSt(6,'done');
-
-  document.getElementById('graph-ph').classList.add('hidden');
-  document.getElementById('graph-wrap').classList.remove('hidden');
   setTimeout(()=>go(6), 200);
 }
 
@@ -1046,26 +1053,31 @@ function rebuildGraph() {
   const minLift = parseFloat(document.getElementById('g-lift')?.value || 1);
   const sub = document.getElementById('g-sub')?.value || '';
 
-  let rules = gAllRules.filter(r => r.lift >= minLift);
+  let rules = gAllRules.filter(r => (r.lift||0) >= minLift);
   if (sub) rules = rules.filter(r => [...r.antecedents,...r.consequents].some(x=>x.includes(sub)));
 
-  // Construir nodos y aristas
+  // Construir grafo
   gNodeMap = {}; gNodes = []; gEdges = [];
+
   const addNode = label => {
     if (!gNodeMap[label]) {
       const isMut = label.includes('MUTATIONSUBTYPES=');
       const short = label
-        .replace('MUTATIONSUBTYPES=','').replace('RNASEQ-CLUSTER_CONSENHIER=','RNASEQ=')
-        .replace('MethTypes.201408=','Meth=').replace('UV-signature=','UV=')
-        .replace('LYMPHOCYTE.SCORE=','LScore=').replace('MIRCluster=','');
+        .replace('MUTATIONSUBTYPES=','')
+        .replace('RNASEQ-CLUSTER_CONSENHIER=','RNASEQ=')
+        .replace('MethTypes.201408=','Meth=')
+        .replace('UV-signature=','UV=')
+        .replace('LYMPHOCYTE.SCORE=','LScore=')
+        .replace('MIRCluster=','');
       const node = {
         id: gNodes.length, label, short, isMut,
-        x: gW/2 + (Math.random()-.5)*Math.min(gW,gH)*.6,
-        y: gH/2 + (Math.random()-.5)*Math.min(gW,gH)*.6,
+        // Posición inicial: subtipos en centro, variables dispersas
+        x: gW/2 + (Math.random()-.5) * (isMut ? 150 : 400),
+        y: gH/2 + (Math.random()-.5) * (isMut ? 150 : 350),
         vx:0, vy:0,
         color: gSubColor(label),
-        r: isMut ? 24 : 13,
-        conns: 0, rules: []
+        r: isMut ? 22 : 12,
+        conns: 0
       };
       gNodeMap[label] = node;
       gNodes.push(node);
@@ -1080,17 +1092,20 @@ function rebuildGraph() {
       aNode.conns++; cNode.conns++;
       gEdges.push({
         src: aNode, tgt: cNode,
-        lift: rule.lift, conf: rule.confidence,
-        sup: rule.support, lev: rule.leverage,
+        lift: rule.lift || 1,
+        conf: rule.confidence || 0,
+        sup: rule.support || 0,
         isTFM: rule.isTFM, rule,
-        col: gLerp('#3fb950','#f85149', Math.min((rule.lift-1)/6,1)),
-        w: 0.8 + rule.confidence * 1.5
+        col: gLerp('#3fb950','#f85149', Math.min(((rule.lift||1)-1)/6,1)),
+        w: 1 + (rule.confidence||0) * 1.5
       });
     });
   });
 
-  gNodes.forEach(n => { if(!n.isMut) n.r = Math.max(9, Math.min(18, 7+n.conns*2)); });
+  // Ajustar radio por conexiones
+  gNodes.forEach(n => { if(!n.isMut) n.r = Math.max(8, Math.min(16, 6+n.conns*2)); });
 
+  // Actualizar stats
   document.getElementById('g-nodes').textContent = gNodes.length;
   document.getElementById('g-edges').textContent = gEdges.length;
   document.getElementById('g-tfm').textContent = gEdges.filter(e=>e.isTFM).length;
@@ -1101,182 +1116,291 @@ function rebuildGraph() {
 }
 
 function startForce() {
-  if (gAnimFrame) cancelAnimationFrame(gAnimFrame);
-  let alpha = 1;
-  const REP = 280, DIST = 110;
+  if (gAnimFrame) { cancelAnimationFrame(gAnimFrame); gAnimFrame = null; }
+  // alpha controla la temperatura de la simulación — empieza en 1, decae hasta 0
+  let alpha = 1.0;
 
   function tick() {
-    if (alpha < 0.005) { gDraw(); gAnimFrame = null; return; }
-    alpha *= 0.95;
+    alpha *= 0.96; // decay más suave
 
-    for (let i=0;i<gNodes.length;i++) for (let j=i+1;j<gNodes.length;j++) {
-      const dx=gNodes[j].x-gNodes[i].x, dy=gNodes[j].y-gNodes[i].y;
-      const d=Math.max(Math.sqrt(dx*dx+dy*dy),1), f=REP/(d*d);
-      gNodes[i].vx-=dx*f/d; gNodes[i].vy-=dy*f/d;
-      gNodes[j].vx+=dx*f/d; gNodes[j].vy+=dy*f/d;
+    if (alpha < 0.003) {
+      gDraw();
+      gAnimFrame = null;
+      return;
     }
-    gEdges.forEach(e=>{
-      const dx=e.tgt.x-e.src.x, dy=e.tgt.y-e.src.y;
-      const d=Math.max(Math.sqrt(dx*dx+dy*dy),1), f=(d-DIST)*0.06;
-      e.src.vx+=dx*f/d; e.src.vy+=dy*f/d;
-      e.tgt.vx-=dx*f/d; e.tgt.vy-=dy*f/d;
+
+    const REP = 3500;   // repulsión entre nodos
+    const LINK = 120;   // longitud de arista ideal
+    const DAMP = 0.8;   // amortiguación de velocidad
+
+    // Repulsión nodo-nodo
+    for (let i=0;i<gNodes.length;i++) {
+      for (let j=i+1;j<gNodes.length;j++) {
+        const dx = gNodes[j].x - gNodes[i].x;
+        const dy = gNodes[j].y - gNodes[i].y;
+        const d2 = dx*dx + dy*dy + 0.01;
+        const d  = Math.sqrt(d2);
+        const f  = (REP / d2) * alpha;
+        const fx = f * dx/d, fy = f * dy/d;
+        gNodes[i].vx -= fx; gNodes[i].vy -= fy;
+        gNodes[j].vx += fx; gNodes[j].vy += fy;
+      }
+    }
+
+    // Atracción por aristas (spring)
+    gEdges.forEach(e => {
+      const dx = e.tgt.x - e.src.x;
+      const dy = e.tgt.y - e.src.y;
+      const d  = Math.sqrt(dx*dx + dy*dy) || 1;
+      const f  = (d - LINK) * 0.04 * alpha;
+      const fx = f * dx/d, fy = f * dy/d;
+      e.src.vx += fx; e.src.vy += fy;
+      e.tgt.vx -= fx; e.tgt.vy -= fy;
     });
-    gNodes.forEach(n=>{
-      n.vx+=(gW/2-n.x)*.002; n.vy+=(gH/2-n.y)*.002;
-      n.vx*=.72; n.vy*=.72;
-      n.x+=n.vx*alpha*20; n.y+=n.vy*alpha*20;
+
+    // Gravedad suave al centro
+    const cx = gW/2, cy = gH/2;
+    gNodes.forEach(n => {
+      n.vx += (cx - n.x) * 0.003 * alpha;
+      n.vy += (cy - n.y) * 0.003 * alpha;
+      // Amortiguación
+      n.vx *= DAMP;
+      n.vy *= DAMP;
+      // Limitar velocidad máxima para evitar explosiones
+      const speed = Math.sqrt(n.vx*n.vx + n.vy*n.vy);
+      if (speed > 8) { n.vx = n.vx/speed*8; n.vy = n.vy/speed*8; }
+      n.x += n.vx;
+      n.y += n.vy;
     });
+
     gDraw();
     gAnimFrame = requestAnimationFrame(tick);
   }
+
   tick();
 }
 
 function gDraw() {
-  if (!gCtx) return;
-  gCtx.clearRect(0,0,gW,gH);
+  if (!gCtx || !gCanvas) return;
+
+  gCtx.clearRect(0, 0, gW, gH);
   gCtx.save();
   gCtx.translate(gTransform.x, gTransform.y);
   gCtx.scale(gTransform.scale, gTransform.scale);
 
-  gCtx.fillStyle='#0d1117';
-  gCtx.fillRect(-gTransform.x/gTransform.scale,-gTransform.y/gTransform.scale,gW/gTransform.scale,gH/gTransform.scale);
+  // Fondo
+  gCtx.fillStyle = '#0d1117';
+  gCtx.fillRect(
+    -gTransform.x / gTransform.scale,
+    -gTransform.y / gTransform.scale,
+    gW / gTransform.scale,
+    gH / gTransform.scale
+  );
 
-  // Aristas
-  gEdges.forEach(e=>{
-    const isHL = gSelected && (e.src===gSelected||e.tgt===gSelected);
-    const a = gSelected?(isHL?.9:.08):.5;
-    const mx=(e.src.x+e.tgt.x)/2+(e.tgt.y-e.src.y)*.12;
-    const my=(e.src.y+e.tgt.y)/2-(e.tgt.x-e.src.x)*.12;
-    gCtx.beginPath(); gCtx.moveTo(e.src.x,e.src.y);
-    gCtx.quadraticCurveTo(mx,my,e.tgt.x,e.tgt.y);
-    gCtx.setLineDash(e.isTFM?[5,3]:[]);
-    gCtx.strokeStyle=e.isTFM?`rgba(255,166,87,${a})`:(e.col+Math.round(a*255).toString(16).padStart(2,'0'));
-    gCtx.lineWidth=e.w; gCtx.stroke(); gCtx.setLineDash([]);
+  // ARISTAS
+  gEdges.forEach(e => {
+    const isHL = gSelected && (e.src===gSelected || e.tgt===gSelected);
+    const alpha = gSelected ? (isHL ? 0.9 : 0.07) : 0.5;
 
-    // Flecha
-    if(isHL||!gSelected){
-      const dx=e.tgt.x-mx,dy=e.tgt.y-my,len=Math.sqrt(dx*dx+dy*dy)||1;
-      const nx=dx/len,ny=dy/len,ar=e.tgt.r+3;
-      const ax=e.tgt.x-nx*ar,ay=e.tgt.y-ny*ar;
-      gCtx.beginPath(); gCtx.moveTo(ax,ay);
-      gCtx.lineTo(ax-nx*5+ny*3,ay-ny*5-nx*3);
-      gCtx.lineTo(ax-nx*5-ny*3,ay-ny*5+nx*3);
+    // Curva cuadrática suave
+    const mx = (e.src.x+e.tgt.x)/2 + (e.tgt.y-e.src.y)*0.1;
+    const my = (e.src.y+e.tgt.y)/2 - (e.tgt.x-e.src.x)*0.1;
+
+    gCtx.beginPath();
+    gCtx.moveTo(e.src.x, e.src.y);
+    gCtx.quadraticCurveTo(mx, my, e.tgt.x, e.tgt.y);
+
+    if (e.isTFM) {
+      gCtx.setLineDash([5, 3]);
+      gCtx.strokeStyle = `rgba(255,166,87,${alpha})`;
+      gCtx.lineWidth = e.w + 0.5;
+    } else {
+      gCtx.setLineDash([]);
+      const hex = Math.round(alpha*255).toString(16).padStart(2,'0');
+      gCtx.strokeStyle = e.col + hex;
+      gCtx.lineWidth = e.w;
+    }
+    gCtx.stroke();
+    gCtx.setLineDash([]);
+
+    // Punta de flecha
+    if (isHL || !gSelected) {
+      const dx = e.tgt.x-mx, dy = e.tgt.y-my;
+      const len = Math.sqrt(dx*dx+dy*dy) || 1;
+      const nx = dx/len, ny = dy/len;
+      const ar = e.tgt.r + 3;
+      const ax = e.tgt.x - nx*ar, ay = e.tgt.y - ny*ar;
+      gCtx.beginPath();
+      gCtx.moveTo(ax, ay);
+      gCtx.lineTo(ax - nx*5 + ny*3, ay - ny*5 - nx*3);
+      gCtx.lineTo(ax - nx*5 - ny*3, ay - ny*5 + nx*3);
       gCtx.closePath();
-      gCtx.fillStyle=e.isTFM?`rgba(255,166,87,${a})`:(e.col+Math.round(a*255).toString(16).padStart(2,'0'));
+      const hex = Math.round(alpha*255).toString(16).padStart(2,'0');
+      gCtx.fillStyle = e.isTFM ? `rgba(255,166,87,${alpha})` : e.col+hex;
       gCtx.fill();
     }
   });
 
-  // Nodos
-  gNodes.forEach(n=>{
-    const isH=n===gHovered, isS=n===gSelected;
-    const a=gSelected&&!isS?.3:1, r=n.r*(isH?1.2:1);
-    if(n.isMut){
-      gCtx.beginPath(); gCtx.arc(n.x,n.y,r+10,0,Math.PI*2);
-      gCtx.fillStyle=n.color+'18'; gCtx.fill();
-    }
-    gCtx.beginPath(); gCtx.arc(n.x,n.y,r,0,Math.PI*2);
-    gCtx.fillStyle=n.color+(a<1?'44':'cc'); gCtx.fill();
-    gCtx.strokeStyle=isS?'#fff':(isH?n.color:n.color+'66');
-    gCtx.lineWidth=isS?2.5:1.5; gCtx.stroke();
+  // NODOS
+  gNodes.forEach(n => {
+    const isH = n===gHovered, isS = n===gSelected;
+    const dimmed = gSelected && !isS;
+    const nodeAlpha = dimmed ? 0.25 : 1;
+    const r = n.r * (isH ? 1.2 : 1);
 
-    // Label
-    const fz=n.isMut?11:9;
-    gCtx.font=`${n.isMut?'600 ':''}${fz}px Segoe UI,sans-serif`;
-    gCtx.fillStyle=`rgba(230,237,243,${a})`;
-    gCtx.textAlign='center'; gCtx.textBaseline='middle';
-    if(n.isMut){
-      gCtx.fillText(n.short, n.x, n.y+r+11);
-    } else if(isH||isS||gTransform.scale>1.4){
-      const parts=n.short.split('=');
-      if(parts.length>1){ gCtx.fillText(parts[0]+'=',n.x,n.y-4); gCtx.fillText(parts[1],n.x,n.y+5); }
-      else gCtx.fillText(n.short,n.x,n.y+r+10);
+    // Glow para nodos de subtipo
+    if (n.isMut && !dimmed) {
+      gCtx.beginPath();
+      gCtx.arc(n.x, n.y, r+12, 0, Math.PI*2);
+      gCtx.fillStyle = n.color + '1a';
+      gCtx.fill();
+    }
+
+    // Círculo
+    gCtx.beginPath();
+    gCtx.arc(n.x, n.y, r, 0, Math.PI*2);
+    const fillHex = Math.round(nodeAlpha * (n.isMut ? 0xcc : 0xaa)).toString(16).padStart(2,'0');
+    gCtx.fillStyle = n.color + fillHex;
+    gCtx.fill();
+    gCtx.strokeStyle = isS ? '#ffffff' : (isH ? n.color : n.color + '77');
+    gCtx.lineWidth = isS ? 2.5 : 1.5;
+    gCtx.stroke();
+
+    // Label — siempre para subtipos, solo on hover/select para variables
+    gCtx.textAlign = 'center';
+    gCtx.textBaseline = 'middle';
+    if (n.isMut) {
+      gCtx.font = `600 11px Segoe UI,sans-serif`;
+      gCtx.fillStyle = `rgba(230,237,243,${nodeAlpha})`;
+      gCtx.fillText(n.short, n.x, n.y + r + 12);
+    } else if (isH || isS || gTransform.scale > 1.5) {
+      gCtx.font = `9px Segoe UI,sans-serif`;
+      gCtx.fillStyle = `rgba(200,210,220,${nodeAlpha})`;
+      const parts = n.short.split('=');
+      if (parts.length > 1) {
+        gCtx.fillText(parts[0]+'=', n.x, n.y - 4);
+        gCtx.fillText(parts[1], n.x, n.y + 5);
+      } else {
+        gCtx.fillText(n.short, n.x, n.y + r + 10);
+      }
     }
   });
 
   gCtx.restore();
 }
 
-function gNodeAt(mx,my){
-  const x=(mx-gTransform.x)/gTransform.scale, y=(my-gTransform.y)/gTransform.scale;
-  for(let i=gNodes.length-1;i>=0;i--) if(Math.hypot(x-gNodes[i].x,y-gNodes[i].y)<gNodes[i].r+6) return gNodes[i];
+function gNodeAt(mx, my) {
+  const x = (mx - gTransform.x) / gTransform.scale;
+  const y = (my - gTransform.y) / gTransform.scale;
+  for (let i=gNodes.length-1; i>=0; i--) {
+    if (Math.hypot(x-gNodes[i].x, y-gNodes[i].y) < gNodes[i].r + 8) return gNodes[i];
+  }
   return null;
 }
 
-function attachGraphEvents(){
-  if(!gCanvas||gCanvas._eventsAttached) return;
+function attachGraphEvents() {
+  if (!gCanvas || gCanvas._eventsAttached) return;
   gCanvas._eventsAttached = true;
   const tip = document.getElementById('graph-tip');
 
-  gCanvas.addEventListener('mousemove', e=>{
-    const rect=gCanvas.getBoundingClientRect();
-    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
-    if(gDragging){
-      gTransform.x=gTransformStart.x+(e.clientX-gDragStart.x);
-      gTransform.y=gTransformStart.y+(e.clientY-gDragStart.y);
-      gDraw(); return;
+  gCanvas.addEventListener('mousemove', e => {
+    const rect = gCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+
+    if (gDragging) {
+      gTransform.x = gTransformStart.x + (e.clientX - gDragStart.x);
+      gTransform.y = gTransformStart.y + (e.clientY - gDragStart.y);
+      if (!gAnimFrame) gDraw();
+      return;
     }
-    const node=gNodeAt(mx,my);
-    if(node){
-      gHovered=node; gCanvas.style.cursor='pointer';
-      const conns=gEdges.filter(e=>e.src===node||e.tgt===node);
-      const avgLift=conns.length?(conns.reduce((a,e)=>a+e.lift,0)/conns.length).toFixed(2):'—';
-      tip.style.display='block'; tip.style.left=(mx+14)+'px'; tip.style.top=(my-10)+'px';
-      tip.innerHTML=`<strong>${node.short}</strong><br>
-        <span style="color:var(--muted)">Conexiones:</span> ${conns.length}<br>
-        <span style="color:var(--muted)">Lift medio:</span> ${avgLift}`;
+
+    const node = gNodeAt(mx, my);
+    if (node) {
+      if (gHovered !== node) { gHovered = node; if (!gAnimFrame) gDraw(); }
+      gCanvas.style.cursor = 'pointer';
+      const conns = gEdges.filter(e=>e.src===node||e.tgt===node);
+      const avgLift = conns.length ? (conns.reduce((a,e)=>a+(e.lift||0),0)/conns.length).toFixed(2) : '—';
+      tip.style.display = 'block';
+      tip.style.left = (mx+14)+'px'; tip.style.top = (my-10)+'px';
+      tip.innerHTML = `<strong>${node.short}</strong><br>
+        <span style="color:var(--muted)">Conexiones:</span> ${conns.length} &nbsp;
+        <span style="color:var(--muted)">Lift medio:</span> ${avgLift}
+        ${node.isMut ? '<br><span style="color:var(--muted);font-size:.68rem">Nodo consecuente (subtipo)</span>' : ''}`;
     } else {
+      if (gHovered) { gHovered = null; if (!gAnimFrame) gDraw(); }
       // Hover arista
-      const x=(mx-gTransform.x)/gTransform.scale, y=(my-gTransform.y)/gTransform.scale;
-      let found=null;
-      for(const e of gEdges){
-        const dx=e.tgt.x-e.src.x,dy=e.tgt.y-e.src.y,len=Math.sqrt(dx*dx+dy*dy)||1;
-        const t=Math.max(0,Math.min(1,((x-e.src.x)*dx+(y-e.src.y)*dy)/(len*len)));
-        if(Math.hypot(x-e.src.x-t*dx,y-e.src.y-t*dy)<7){found=e;break;}
+      const wx = (mx-gTransform.x)/gTransform.scale;
+      const wy = (my-gTransform.y)/gTransform.scale;
+      let found = null;
+      for (const e of gEdges) {
+        const dx=e.tgt.x-e.src.x, dy=e.tgt.y-e.src.y, len=Math.sqrt(dx*dx+dy*dy)||1;
+        const t=Math.max(0,Math.min(1,((wx-e.src.x)*dx+(wy-e.src.y)*dy)/(len*len)));
+        if (Math.hypot(wx-e.src.x-t*dx, wy-e.src.y-t*dy) < 8) { found=e; break; }
       }
-      if(found){
-        gCanvas.style.cursor='pointer';
-        const antShort=found.rule.antecedents.map(a=>a.split('=')[1]||a).join(' + ');
-        const consShort=(found.rule.consequents[0]||'').replace('MUTATIONSUBTYPES=','');
-        tip.style.display='block'; tip.style.left=(mx+14)+'px'; tip.style.top=(my-10)+'px';
-        tip.innerHTML=`${found.isTFM?'<span style="color:#ffa657;font-size:.68rem">✅ Regla TFM</span><br>':''}
-          <strong>${antShort}</strong><br>→ <span style="color:${gSubColor(found.rule.consequents[0])}">${consShort}</span><br>
-          <span style="color:var(--muted)">Lift:</span> ${found.lift} &nbsp; <span style="color:var(--muted)">Conf:</span> ${found.conf}`;
+      if (found) {
+        gCanvas.style.cursor = 'pointer';
+        const antShort = found.rule.antecedents.map(a=>a.split('=')[1]||a).join(' + ');
+        const consShort = (found.rule.consequents[0]||'').replace('MUTATIONSUBTYPES=','');
+        tip.style.display = 'block';
+        tip.style.left = (mx+14)+'px'; tip.style.top = (my-10)+'px';
+        tip.innerHTML = `${found.isTFM?'<span style="color:#ffa657;font-size:.68rem">✅ Regla TFM</span><br>':''}
+          <strong>${antShort}</strong><br>
+          → <span style="color:${gSubColor(found.rule.consequents[0])}">${consShort}</span><br>
+          <span style="color:var(--muted)">Lift:</span> ${found.lift} &nbsp;
+          <span style="color:var(--muted)">Conf:</span> ${found.conf}`;
       } else {
-        gHovered=null; gCanvas.style.cursor='grab'; tip.style.display='none';
+        gCanvas.style.cursor = 'grab';
+        tip.style.display = 'none';
       }
     }
-    if(!gAnimFrame) gDraw();
   });
 
-  gCanvas.addEventListener('mouseleave',()=>{ gHovered=null; tip.style.display='none'; if(!gAnimFrame) gDraw(); });
-  gCanvas.addEventListener('mousedown',e=>{ gDragging=true; gDragStart={x:e.clientX,y:e.clientY}; gTransformStart={...gTransform}; gCanvas.style.cursor='grabbing'; });
-  gCanvas.addEventListener('mouseup',e=>{
-    if(!gDragging) return;
-    const moved=Math.hypot(e.clientX-gDragStart.x,e.clientY-gDragStart.y)>3;
-    gDragging=false; gCanvas.style.cursor='grab';
-    if(!moved){
-      const rect=gCanvas.getBoundingClientRect();
-      const node=gNodeAt(e.clientX-rect.left,e.clientY-rect.top);
-      if(node){ gSelected=(gSelected===node)?null:node; if(!gAnimFrame) gDraw(); }
+  gCanvas.addEventListener('mouseleave', () => {
+    gHovered = null;
+    document.getElementById('graph-tip').style.display = 'none';
+    if (!gAnimFrame) gDraw();
+  });
+
+  gCanvas.addEventListener('mousedown', e => {
+    gDragging = true;
+    gDragStart = {x: e.clientX, y: e.clientY};
+    gTransformStart = {...gTransform};
+    gCanvas.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('mouseup', e => {
+    if (!gDragging) return;
+    const moved = Math.hypot(e.clientX-gDragStart.x, e.clientY-gDragStart.y) > 4;
+    gDragging = false;
+    if (gCanvas) gCanvas.style.cursor = 'grab';
+    if (!moved) {
+      const rect = gCanvas.getBoundingClientRect();
+      const node = gNodeAt(e.clientX-rect.left, e.clientY-rect.top);
+      if (node) {
+        gSelected = (gSelected===node) ? null : node;
+        if (!gAnimFrame) gDraw();
+      }
     }
   });
-  gCanvas.addEventListener('wheel',e=>{
+
+  gCanvas.addEventListener('wheel', e => {
     e.preventDefault();
-    const rect=gCanvas.getBoundingClientRect();
-    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
-    const d=e.deltaY>0?.88:1.12;
-    const ns=Math.max(.15,Math.min(5,gTransform.scale*d));
-    gTransform.x=mx-(mx-gTransform.x)*(ns/gTransform.scale);
-    gTransform.y=my-(my-gTransform.y)*(ns/gTransform.scale);
-    gTransform.scale=ns;
-    if(!gAnimFrame) gDraw();
-  },{passive:false});
+    const rect = gCanvas.getBoundingClientRect();
+    const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+    const factor = e.deltaY > 0 ? 0.88 : 1.14;
+    const ns = Math.max(0.15, Math.min(5, gTransform.scale*factor));
+    gTransform.x = mx - (mx-gTransform.x) * (ns/gTransform.scale);
+    gTransform.y = my - (my-gTransform.y) * (ns/gTransform.scale);
+    gTransform.scale = ns;
+    if (!gAnimFrame) gDraw();
+  }, {passive:false});
 }
 
-function resetGraphView(){ gTransform={x:0,y:0,scale:1}; gSelected=null; if(!gAnimFrame) gDraw(); }
-function go(i){ document.getElementById('step-'+i)?.scrollIntoView({behavior:'smooth',block:'start'}); document.querySelectorAll('.si').forEach(el=>el.classList.remove('active')); document.getElementById('nav-'+i)?.classList.add('active'); }
+function resetGraphView() {
+  gTransform = {x:0, y:0, scale:1};
+  gSelected = null;
+  if (!gAnimFrame) gDraw();
+}
 </script>
 </body>
 </html>
