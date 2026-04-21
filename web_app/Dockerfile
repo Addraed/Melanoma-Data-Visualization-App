@@ -30,11 +30,15 @@ RUN R -e "\
 
 WORKDIR /app
 
-# Fijar setuptools ANTES de instalar rpy2 — evita el error de setuptools.command.build
+# R_HOME necesario para rpy2
+ENV R_HOME=/usr/local/lib/R
+
+# Fijar setuptools y wheel primero
 RUN pip3 install --no-cache-dir "setuptools==68.2.2" "wheel==0.41.3"
 
-# R_HOME necesario para que rpy2 encuentre R al compilar
-ENV R_HOME=/usr/local/lib/R
+# Instalar rpy2 desde GitHub (evita el problema de metadatos de PyPI)
+RUN pip3 install --no-cache-dir \
+    "git+https://github.com/rpy2/rpy2.git@rpy2-3.5.x"
 
 # Instalar el resto de dependencias
 COPY web_app/requirements.txt .
