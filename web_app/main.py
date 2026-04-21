@@ -30,14 +30,38 @@ SCRIPT_DIR.mkdir(parents=True, exist_ok=True)
 R_EXPORT_SCRIPT = SCRIPT_DIR / "export_skcm.R"
 R_EXPORT_SCRIPT.write_text("""
 library(TCGAbiolinks)
-skcm <- TCGAquery_subtype(tumor = "skcm")
-cols <- c("MUTATIONSUBTYPES","UV-signature","RNASEQ-CLUSTER_CONSENHIER",
-          "MethTypes.201408","MIRCluster","LYMPHOCYTE.SCORE")
-available <- cols[cols %in% colnames(skcm)]
-out <- skcm[, available, drop=FALSE]
-dir.create("/data_cache", showWarnings=FALSE, recursive=TRUE)
-write.csv(out, "/data_cache/skcm_subtipos.csv", row.names=FALSE)
-cat("Exportado:", nrow(out), "pacientes\\n")
+skcm <- TCGAquery_subtype(tumor = 'skcm')
+
+cat('Columnas en TCGAbiolinks:\n')
+cat(paste(colnames(skcm), collapse=', '), '\n')
+
+col_map <- list(
+  'MUTATIONSUBTYPES'          = c('MUTATIONSUBTYPES','Mutation.Subtype'),
+  'UV-signature'              = c('UV-signature','UV.signature','UV_signature'),
+  'RNASEQ-CLUSTER_CONSENHIER' = c('RNASEQ-CLUSTER_CONSENHIER','RNASEQ.CLUSTER_CONSENHIER','RNASEQ_CLUSTER_CONSENHIER'),
+  'MethTypes.201408'          = c('MethTypes.201408','MethTypes201408','MethTypes_201408'),
+  'MIRCluster'                = c('MIRCluster','MIR.cluster'),
+  'LYMPHOCYTE.SCORE'          = c('LYMPHOCYTE.SCORE','Lymphocyte.Score','LYMPHOCYTE_SCORE')
+)
+
+out <- data.frame(row.names=seq_len(nrow(skcm)))
+for (standard in names(col_map)) {
+  found <- NULL
+  for (alias in col_map[[standard]]) {
+    if (alias %in% colnames(skcm)) { found <- alias; break }
+  }
+  if (!is.null(found)) {
+    out[[standard]] <- skcm[[found]]
+    cat('OK:', found, '->', standard, '\n')
+  } else {
+    out[[standard]] <- NA
+    cat('FALTA:', standard, '\n')
+  }
+}
+
+dir.create('/data_cache', showWarnings=FALSE, recursive=TRUE)
+write.csv(out, '/data_cache/skcm_subtipos.csv', row.names=FALSE)
+cat('Exportado:', nrow(out), 'pacientes\n')
 """)
 
 # Reglas exactas del TFM — Tabla 3 de la memoria
@@ -58,10 +82,18 @@ TFM_RULES = [
 
 def run_rscript(script_path: Path, timeout: int = 120) -> tuple[bool, str]:
     """Ejecuta un script R via Rscript y retorna (éxito, output)."""
+    # Encontrar Rscript en rutas conocidas de rocker
+    rscript_bin = "Rscript"
+    for p in ["/usr/local/bin/Rscript", "/usr/bin/Rscript"]:
+        if Path(p).exists():
+            rscript_bin = p
+            break
+
     try:
         result = subprocess.run(
-            ["Rscript", "--vanilla", str(script_path)],
-            capture_output=True, text=True, timeout=timeout
+            [rscript_bin, "--vanilla", str(script_path)],
+            capture_output=True, text=True, timeout=timeout,
+            env={**os.environ, "R_HOME": "/usr/local/lib/R"}
         )
         output = result.stdout + result.stderr
         return result.returncode == 0, output
@@ -80,6 +112,10 @@ def load_skcm_data() -> pd.DataFrame:
         return pd.read_csv(CACHE_CSV)
 
     logger.info("Generando datos via Rscript...")
+    # Asegurar path absoluto de Rscript (rocker lo instala en /usr/local/bin)
+    for rscript_path in ["/usr/local/bin/Rscript", "/usr/bin/Rscript", "Rscript"]:
+        if Path(rscript_path).exists() or rscript_path == "Rscript":
+            break
     ok, output = run_rscript(R_EXPORT_SCRIPT, timeout=180)
     logger.info(f"Rscript output: {output[:500]}")
 
@@ -224,13 +260,22 @@ def health():
 
 @app.get("/api/tcga-status")
 def tcga_status():
-    rscript_ok = subprocess.run(
-        ["which", "Rscript"], capture_output=True
-    ).returncode == 0
+    # Buscar Rscript en ubicaciones conocidas de rocker
+    rscript_paths = ["/usr/local/bin/Rscript", "/usr/bin/Rscript"]
+    rscript_ok = any(Path(p).exists() for p in rscript_paths)
+
+    csv_info = {}
+    if CACHE_CSV.exists():
+        try:
+            df = pd.read_csv(CACHE_CSV)
+            csv_info = {"rows": len(df), "columns": list(df.columns)}
+        except Exception as e:
+            csv_info = {"error": str(e)}
+
     return {
         "cache_csv": CACHE_CSV.exists(),
         "rscript_available": rscript_ok,
-        "cache_rows": len(pd.read_csv(CACHE_CSV)) if CACHE_CSV.exists() else 0,
+        "csv_info": csv_info,
     }
 
 
@@ -276,6 +321,20 @@ def run_pipeline(params: PipelineParams):
         "computed_rules_total": result["n_rules_clinical"],
         "matched": matched,
     }
+
+    # Limpiar inf y NaN antes de serializar (conviction puede ser inf cuando conf=1.0)
+    def clean_floats(obj):
+        if isinstance(obj, float):
+            if obj != obj or obj == float('inf') or obj == float('-inf'):
+                return None
+            return round(obj, 4)
+        if isinstance(obj, dict):
+            return {k: clean_floats(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [clean_floats(i) for i in obj]
+        return obj
+
+    result = clean_floats(result)
     return JSONResponse(result)
 
 
@@ -283,6 +342,23 @@ def run_pipeline(params: PipelineParams):
 def get_tfm_rules():
     return JSONResponse({"rules": TFM_RULES})
 
+
+
+@app.post("/api/refresh-cache")
+def refresh_cache():
+    """Fuerza la regeneración del CSV borrando el caché actual."""
+    if CACHE_CSV.exists():
+        CACHE_CSV.unlink()
+        logger.info("Caché CSV eliminado")
+    try:
+        df = load_skcm_data()
+        return JSONResponse({
+            "status": "ok",
+            "rows": len(df),
+            "columns": list(df.columns)
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Frontend estático
 app.mount("/static", StaticFiles(directory="static"), name="static")
