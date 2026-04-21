@@ -194,12 +194,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
     <span class="badge bb">TCGA-SKCM</span>
     <span class="badge bg">TFM · UOC/UB 2023</span>
     <span class="badge br" id="api-badge">API ...</span>
-    <button onclick="window.open('/graph','_blank')"
-      style="padding:4px 11px;background:rgba(188,140,255,.15);color:#bc8cff;
-      border:1px solid rgba(188,140,255,.35);border-radius:12px;cursor:pointer;
-      font-size:.67rem;font-weight:700;font-family:inherit;letter-spacing:.04em">
-      🕸 GRAFO
-    </button>
+
   </div>
 </header>
 
@@ -212,6 +207,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
     <div class="si" id="nav-3" onclick="go(3)"><div class="sn" id="sn-3">4</div><div><div class="sl">Reglas de asociación</div><div class="ss">conf ≥ 0.85</div></div></div>
     <div class="si" id="nav-4" onclick="go(4)"><div class="sn" id="sn-4">5</div><div><div class="sl">Filtrado clínico</div><div class="ss">lift>1 · leverage>0 · MUTSUBT</div></div></div>
     <div class="si" id="nav-5" onclick="go(5)"><div class="sn" id="sn-5">6</div><div><div class="sl">Resultados</div><div class="ss">TFM + calculadas</div></div></div>
+    <div class="si" id="nav-6" onclick="go(6)"><div class="sn" id="sn-6">7</div><div><div class="sl">Grafo de reglas</div><div class="ss">Force-directed · interactivo</div></div></div>
 
     <div class="sb-sep"></div>
     <div id="api-status">Comprobando API...</div>
@@ -232,7 +228,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
 
     <!-- STEP 0: CARGA -->
     <div class="panel" id="step-0">
-      <div class="pt">📂 Paso 1 — Carga de datos</div>
+      <div class="pt">📂 Carga de datos</div>
       <div class="pd">
         Los datos son el CSV original del TFM — los mismos 331 pacientes TCGA-SKCM
         con las 6 variables del paper Cell 2015, descargados de la misma fuente que el notebook original
@@ -274,7 +270,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
       <div class="spanel" id="src-synthetic">
         <div class="callout ca">
           <span>⚠️</span>
-          <span>Datos sintéticos con las <strong>distribuciones del TFM</strong> y correlaciones de las 11 reglas (Cell 2015). No son datos reales TCGA — útiles para probar el pipeline sin acceso a R.</span>
+          <span>Datos sintéticos con las <strong>distribuciones del TFM</strong> y correlaciones de las 11 reglas (Cell 2015). No son datos reales TCGA.</span>
         </div>
         <div class="g2" style="margin-bottom:12px">
           <div class="pg"><label>Nº pacientes</label><input type="number" id="synth-n" value="331" min="50" max="1000"></div>
@@ -302,7 +298,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
 
     <!-- STEP 1: PREPROC -->
     <div class="panel" id="step-1">
-      <div class="pt">⚙️ Paso 2 — Preprocesamiento</div>
+      <div class="pt">⚙️ Preprocesamiento</div>
       <div class="pd">
         One-hot encoding de las 6 variables categóricas. <code>LYMPHOCYTE.SCORE</code>
         (0–6) se discretiza en bins: <em>0.0</em>, <em>low (1–3)</em>, <em>high (4+)</em>.
@@ -316,7 +312,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
 
     <!-- STEP 2-4: PIPELINE (ejecutado en backend) -->
     <div class="panel" id="step-2">
-      <div class="pt">🚀 Pasos 3–5 — FP-Growth + Reglas + Filtrado</div>
+      <div class="pt">🚀 FP-Growth + Reglas + Filtrado</div>
       <div class="pd">
         El backend Python ejecuta el pipeline completo equivalente al notebook del TFM:
         <code>fpgrowth()</code> → <code>association_rules()</code> → filtro lift/leverage → filtro consecuente=MUTATIONSUBTYPES.
@@ -345,7 +341,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
 
     <!-- STEP 5: RESULTADOS -->
     <div class="panel" id="step-5">
-      <div class="pt">📊 Paso 6 — Resultados</div>
+      <div class="pt">📊 Resultados</div>
       <div id="res-ph" class="callout cb"><span>⏳</span> Ejecuta el pipeline para ver los resultados.</div>
 
       <div id="res-content" class="hidden">
@@ -416,6 +412,64 @@ tr:hover td{background:rgba(255,255,255,.012);}
           <div id="match-summary" style="margin-top:12px"></div>
         </div>
 
+      </div>
+    </div>
+
+    <!-- STEP 7: GRAFO -->
+    <div class="panel" id="step-6">
+      <div class="pt">🕸 Visualización </div>
+      <div class="pd">
+        Visualización interactiva de las reglas calculadas. Nodos coloreados por subtipo de mutación,
+        aristas por lift (verde→rojo). Las reglas del TFM aparecen en naranja discontinuo.
+        <em>Arrastra · Scroll para zoom · Click en nodo para resaltar sus conexiones.</em>
+      </div>
+      <div id="graph-ph" class="callout cb"><span>⏳</span> Ejecuta el pipeline para ver el grafo.</div>
+      <div id="graph-wrap" class="hidden" style="position:relative;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+        <canvas id="graph-canvas" style="display:block;width:100%;height:600px;background:var(--bg)"></canvas>
+        <div class="tip" id="graph-tip"></div>
+        <!-- Controls overlay -->
+        <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:5">
+          <div style="background:rgba(22,27,34,.9);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font-size:.72rem;min-width:160px">
+            <div style="color:var(--muted);font-size:.63rem;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Filtros</div>
+            <div style="margin-bottom:6px">
+              <label style="font-size:.7rem;color:var(--muted)">Lift mín: <strong id="g-lift-val">1.0</strong></label>
+              <input type="range" id="g-lift" min="1" max="8" step="0.1" value="1"
+                style="width:100%;accent-color:var(--blue)"
+                oninput="document.getElementById('g-lift-val').textContent=parseFloat(this.value).toFixed(1);rebuildGraph()">
+            </div>
+            <div>
+              <label style="font-size:.7rem;color:var(--muted)">Subtipo</label>
+              <select id="g-sub" onchange="rebuildGraph()"
+                style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 6px;font-size:.72rem;margin-top:3px">
+                <option value="">Todos</option>
+                <option value="BRAF">BRAF</option>
+                <option value="RAS">RAS</option>
+                <option value="Triple_WT">Triple WT</option>
+                <option value="NF1">NF1</option>
+              </select>
+            </div>
+          </div>
+          <div style="background:rgba(22,27,34,.9);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font-size:.72rem">
+            <div style="color:var(--muted);font-size:.63rem;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Leyenda</div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="display:flex;align-items:center;gap:6px"><div style="width:9px;height:9px;border-radius:50%;background:var(--blue);flex-shrink:0"></div><span>BRAF</span></div>
+              <div style="display:flex;align-items:center;gap:6px"><div style="width:9px;height:9px;border-radius:50%;background:var(--green);flex-shrink:0"></div><span>RAS</span></div>
+              <div style="display:flex;align-items:center;gap:6px"><div style="width:9px;height:9px;border-radius:50%;background:var(--purple);flex-shrink:0"></div><span>Triple WT</span></div>
+              <div style="display:flex;align-items:center;gap:6px"><div style="width:9px;height:9px;border-radius:50%;background:var(--amber);flex-shrink:0"></div><span>NF1</span></div>
+              <div style="display:flex;align-items:center;gap:6px"><div style="width:9px;height:9px;border-radius:50%;background:var(--muted);flex-shrink:0"></div><span>Variable</span></div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:3px"><div style="width:16px;height:2px;background:#ffa657;flex-shrink:0;border-top:2px dashed #ffa657"></div><span>Regla TFM</span></div>
+            </div>
+          </div>
+          <button onclick="resetGraphView()" style="padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;font-size:.72rem">⟳ Reset</button>
+        </div>
+        <!-- Stats -->
+        <div style="position:absolute;bottom:10px;left:10px;background:rgba(22,27,34,.85);
+          border:1px solid var(--border);border-radius:6px;padding:7px 12px;
+          font-size:.71rem;color:var(--muted);display:flex;gap:14px">
+          <span>Nodos: <strong id="g-nodes" style="color:var(--text)">0</strong></span>
+          <span>Aristas: <strong id="g-edges" style="color:var(--text)">0</strong></span>
+          <span>TFM: <strong id="g-tfm" style="color:var(--amber)">0</strong></span>
+        </div>
       </div>
     </div>
 
@@ -679,6 +733,10 @@ function renderResults() {
   renderCalcTable();
   renderMatchRules();
   renderScatter();
+  // Inicializar grafo con las reglas calculadas
+  setTimeout(()=>{
+    initGraph(pipelineResult.rules_clinical || [], pipelineResult.tfm_rules || []);
+  }, 300);
   setTimeout(()=>go(5), 200);
 }
 
@@ -922,6 +980,303 @@ async function loadSynthetic() {
 
 // Arrancar
 checkAPI();
+
+// ============================================================
+// GRAFO — Paso 7
+// ============================================================
+let gNodes = [], gEdges = [], gNodeMap = {};
+let gCanvas, gCtx, gW, gH;
+let gTransform = {x:0, y:0, scale:1};
+let gDragging = false, gDragStart = {}, gTransformStart = {};
+let gHovered = null, gSelected = null;
+let gAnimFrame = null;
+let gAllRules = [], gTFMRules = [];
+
+const GCOLS = {
+  BRAF:'#58a6ff', RAS:'#3fb950', Triple_WT:'#bc8cff', NF1:'#d29922', var:'#8b949e'
+};
+
+function gSubColor(label) {
+  if(label.includes('BRAF')) return GCOLS.BRAF;
+  if(label.includes('RAS'))  return GCOLS.RAS;
+  if(label.includes('Triple')) return GCOLS.Triple_WT;
+  if(label.includes('NF1'))  return GCOLS.NF1;
+  return GCOLS.var;
+}
+
+function gLerp(h1, h2, t) {
+  const c = h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+  const[r1,g1,b1]=c(h1),[r2,g2,b2]=c(h2);
+  return '#'+[r1+(r2-r1)*t,g1+(g2-g1)*t,b1+(b2-b1)*t].map(x=>Math.round(x).toString(16).padStart(2,'0')).join('');
+}
+
+function initGraph(rules, tfmRules) {
+  gAllRules = rules;
+  gTFMRules = tfmRules;
+
+  gCanvas = document.getElementById('graph-canvas');
+  if (!gCanvas) return;
+  gCtx = gCanvas.getContext('2d');
+
+  // Ajustar tamaño real del canvas
+  const rect = gCanvas.parentElement.getBoundingClientRect();
+  gW = gCanvas.width = rect.width || 800;
+  gH = gCanvas.height = 600;
+
+  // Marcar reglas TFM
+  gAllRules.forEach(r => {
+    const antS = new Set(r.antecedents), conS = new Set(r.consequents);
+    r.isTFM = gTFMRules.some(t =>
+      JSON.stringify([...new Set(t.ant)].sort()) === JSON.stringify([...antS].sort()) &&
+      JSON.stringify([...new Set(t.cons)].sort()) === JSON.stringify([...conS].sort())
+    );
+  });
+
+  attachGraphEvents();
+  rebuildGraph();
+  setSt(6,'done');
+
+  document.getElementById('graph-ph').classList.add('hidden');
+  document.getElementById('graph-wrap').classList.remove('hidden');
+  setTimeout(()=>go(6), 200);
+}
+
+function rebuildGraph() {
+  if (!gCanvas) return;
+  const minLift = parseFloat(document.getElementById('g-lift')?.value || 1);
+  const sub = document.getElementById('g-sub')?.value || '';
+
+  let rules = gAllRules.filter(r => r.lift >= minLift);
+  if (sub) rules = rules.filter(r => [...r.antecedents,...r.consequents].some(x=>x.includes(sub)));
+
+  // Construir nodos y aristas
+  gNodeMap = {}; gNodes = []; gEdges = [];
+  const addNode = label => {
+    if (!gNodeMap[label]) {
+      const isMut = label.includes('MUTATIONSUBTYPES=');
+      const short = label
+        .replace('MUTATIONSUBTYPES=','').replace('RNASEQ-CLUSTER_CONSENHIER=','RNASEQ=')
+        .replace('MethTypes.201408=','Meth=').replace('UV-signature=','UV=')
+        .replace('LYMPHOCYTE.SCORE=','LScore=').replace('MIRCluster=','');
+      const node = {
+        id: gNodes.length, label, short, isMut,
+        x: gW/2 + (Math.random()-.5)*Math.min(gW,gH)*.6,
+        y: gH/2 + (Math.random()-.5)*Math.min(gW,gH)*.6,
+        vx:0, vy:0,
+        color: gSubColor(label),
+        r: isMut ? 24 : 13,
+        conns: 0, rules: []
+      };
+      gNodeMap[label] = node;
+      gNodes.push(node);
+    }
+    return gNodeMap[label];
+  };
+
+  rules.forEach(rule => {
+    const cNode = addNode(rule.consequents[0]);
+    rule.antecedents.forEach(ant => {
+      const aNode = addNode(ant);
+      aNode.conns++; cNode.conns++;
+      gEdges.push({
+        src: aNode, tgt: cNode,
+        lift: rule.lift, conf: rule.confidence,
+        sup: rule.support, lev: rule.leverage,
+        isTFM: rule.isTFM, rule,
+        col: gLerp('#3fb950','#f85149', Math.min((rule.lift-1)/6,1)),
+        w: 0.8 + rule.confidence * 1.5
+      });
+    });
+  });
+
+  gNodes.forEach(n => { if(!n.isMut) n.r = Math.max(9, Math.min(18, 7+n.conns*2)); });
+
+  document.getElementById('g-nodes').textContent = gNodes.length;
+  document.getElementById('g-edges').textContent = gEdges.length;
+  document.getElementById('g-tfm').textContent = gEdges.filter(e=>e.isTFM).length;
+
+  gSelected = null; gHovered = null;
+  gTransform = {x:0, y:0, scale:1};
+  startForce();
+}
+
+function startForce() {
+  if (gAnimFrame) cancelAnimationFrame(gAnimFrame);
+  let alpha = 1;
+  const REP = 280, DIST = 110;
+
+  function tick() {
+    if (alpha < 0.005) { gDraw(); gAnimFrame = null; return; }
+    alpha *= 0.95;
+
+    for (let i=0;i<gNodes.length;i++) for (let j=i+1;j<gNodes.length;j++) {
+      const dx=gNodes[j].x-gNodes[i].x, dy=gNodes[j].y-gNodes[i].y;
+      const d=Math.max(Math.sqrt(dx*dx+dy*dy),1), f=REP/(d*d);
+      gNodes[i].vx-=dx*f/d; gNodes[i].vy-=dy*f/d;
+      gNodes[j].vx+=dx*f/d; gNodes[j].vy+=dy*f/d;
+    }
+    gEdges.forEach(e=>{
+      const dx=e.tgt.x-e.src.x, dy=e.tgt.y-e.src.y;
+      const d=Math.max(Math.sqrt(dx*dx+dy*dy),1), f=(d-DIST)*0.06;
+      e.src.vx+=dx*f/d; e.src.vy+=dy*f/d;
+      e.tgt.vx-=dx*f/d; e.tgt.vy-=dy*f/d;
+    });
+    gNodes.forEach(n=>{
+      n.vx+=(gW/2-n.x)*.002; n.vy+=(gH/2-n.y)*.002;
+      n.vx*=.72; n.vy*=.72;
+      n.x+=n.vx*alpha*20; n.y+=n.vy*alpha*20;
+    });
+    gDraw();
+    gAnimFrame = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+function gDraw() {
+  if (!gCtx) return;
+  gCtx.clearRect(0,0,gW,gH);
+  gCtx.save();
+  gCtx.translate(gTransform.x, gTransform.y);
+  gCtx.scale(gTransform.scale, gTransform.scale);
+
+  gCtx.fillStyle='#0d1117';
+  gCtx.fillRect(-gTransform.x/gTransform.scale,-gTransform.y/gTransform.scale,gW/gTransform.scale,gH/gTransform.scale);
+
+  // Aristas
+  gEdges.forEach(e=>{
+    const isHL = gSelected && (e.src===gSelected||e.tgt===gSelected);
+    const a = gSelected?(isHL?.9:.08):.5;
+    const mx=(e.src.x+e.tgt.x)/2+(e.tgt.y-e.src.y)*.12;
+    const my=(e.src.y+e.tgt.y)/2-(e.tgt.x-e.src.x)*.12;
+    gCtx.beginPath(); gCtx.moveTo(e.src.x,e.src.y);
+    gCtx.quadraticCurveTo(mx,my,e.tgt.x,e.tgt.y);
+    gCtx.setLineDash(e.isTFM?[5,3]:[]);
+    gCtx.strokeStyle=e.isTFM?`rgba(255,166,87,${a})`:(e.col+Math.round(a*255).toString(16).padStart(2,'0'));
+    gCtx.lineWidth=e.w; gCtx.stroke(); gCtx.setLineDash([]);
+
+    // Flecha
+    if(isHL||!gSelected){
+      const dx=e.tgt.x-mx,dy=e.tgt.y-my,len=Math.sqrt(dx*dx+dy*dy)||1;
+      const nx=dx/len,ny=dy/len,ar=e.tgt.r+3;
+      const ax=e.tgt.x-nx*ar,ay=e.tgt.y-ny*ar;
+      gCtx.beginPath(); gCtx.moveTo(ax,ay);
+      gCtx.lineTo(ax-nx*5+ny*3,ay-ny*5-nx*3);
+      gCtx.lineTo(ax-nx*5-ny*3,ay-ny*5+nx*3);
+      gCtx.closePath();
+      gCtx.fillStyle=e.isTFM?`rgba(255,166,87,${a})`:(e.col+Math.round(a*255).toString(16).padStart(2,'0'));
+      gCtx.fill();
+    }
+  });
+
+  // Nodos
+  gNodes.forEach(n=>{
+    const isH=n===gHovered, isS=n===gSelected;
+    const a=gSelected&&!isS?.3:1, r=n.r*(isH?1.2:1);
+    if(n.isMut){
+      gCtx.beginPath(); gCtx.arc(n.x,n.y,r+10,0,Math.PI*2);
+      gCtx.fillStyle=n.color+'18'; gCtx.fill();
+    }
+    gCtx.beginPath(); gCtx.arc(n.x,n.y,r,0,Math.PI*2);
+    gCtx.fillStyle=n.color+(a<1?'44':'cc'); gCtx.fill();
+    gCtx.strokeStyle=isS?'#fff':(isH?n.color:n.color+'66');
+    gCtx.lineWidth=isS?2.5:1.5; gCtx.stroke();
+
+    // Label
+    const fz=n.isMut?11:9;
+    gCtx.font=`${n.isMut?'600 ':''}${fz}px Segoe UI,sans-serif`;
+    gCtx.fillStyle=`rgba(230,237,243,${a})`;
+    gCtx.textAlign='center'; gCtx.textBaseline='middle';
+    if(n.isMut){
+      gCtx.fillText(n.short, n.x, n.y+r+11);
+    } else if(isH||isS||gTransform.scale>1.4){
+      const parts=n.short.split('=');
+      if(parts.length>1){ gCtx.fillText(parts[0]+'=',n.x,n.y-4); gCtx.fillText(parts[1],n.x,n.y+5); }
+      else gCtx.fillText(n.short,n.x,n.y+r+10);
+    }
+  });
+
+  gCtx.restore();
+}
+
+function gNodeAt(mx,my){
+  const x=(mx-gTransform.x)/gTransform.scale, y=(my-gTransform.y)/gTransform.scale;
+  for(let i=gNodes.length-1;i>=0;i--) if(Math.hypot(x-gNodes[i].x,y-gNodes[i].y)<gNodes[i].r+6) return gNodes[i];
+  return null;
+}
+
+function attachGraphEvents(){
+  if(!gCanvas||gCanvas._eventsAttached) return;
+  gCanvas._eventsAttached = true;
+  const tip = document.getElementById('graph-tip');
+
+  gCanvas.addEventListener('mousemove', e=>{
+    const rect=gCanvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    if(gDragging){
+      gTransform.x=gTransformStart.x+(e.clientX-gDragStart.x);
+      gTransform.y=gTransformStart.y+(e.clientY-gDragStart.y);
+      gDraw(); return;
+    }
+    const node=gNodeAt(mx,my);
+    if(node){
+      gHovered=node; gCanvas.style.cursor='pointer';
+      const conns=gEdges.filter(e=>e.src===node||e.tgt===node);
+      const avgLift=conns.length?(conns.reduce((a,e)=>a+e.lift,0)/conns.length).toFixed(2):'—';
+      tip.style.display='block'; tip.style.left=(mx+14)+'px'; tip.style.top=(my-10)+'px';
+      tip.innerHTML=`<strong>${node.short}</strong><br>
+        <span style="color:var(--muted)">Conexiones:</span> ${conns.length}<br>
+        <span style="color:var(--muted)">Lift medio:</span> ${avgLift}`;
+    } else {
+      // Hover arista
+      const x=(mx-gTransform.x)/gTransform.scale, y=(my-gTransform.y)/gTransform.scale;
+      let found=null;
+      for(const e of gEdges){
+        const dx=e.tgt.x-e.src.x,dy=e.tgt.y-e.src.y,len=Math.sqrt(dx*dx+dy*dy)||1;
+        const t=Math.max(0,Math.min(1,((x-e.src.x)*dx+(y-e.src.y)*dy)/(len*len)));
+        if(Math.hypot(x-e.src.x-t*dx,y-e.src.y-t*dy)<7){found=e;break;}
+      }
+      if(found){
+        gCanvas.style.cursor='pointer';
+        const antShort=found.rule.antecedents.map(a=>a.split('=')[1]||a).join(' + ');
+        const consShort=(found.rule.consequents[0]||'').replace('MUTATIONSUBTYPES=','');
+        tip.style.display='block'; tip.style.left=(mx+14)+'px'; tip.style.top=(my-10)+'px';
+        tip.innerHTML=`${found.isTFM?'<span style="color:#ffa657;font-size:.68rem">✅ Regla TFM</span><br>':''}
+          <strong>${antShort}</strong><br>→ <span style="color:${gSubColor(found.rule.consequents[0])}">${consShort}</span><br>
+          <span style="color:var(--muted)">Lift:</span> ${found.lift} &nbsp; <span style="color:var(--muted)">Conf:</span> ${found.conf}`;
+      } else {
+        gHovered=null; gCanvas.style.cursor='grab'; tip.style.display='none';
+      }
+    }
+    if(!gAnimFrame) gDraw();
+  });
+
+  gCanvas.addEventListener('mouseleave',()=>{ gHovered=null; tip.style.display='none'; if(!gAnimFrame) gDraw(); });
+  gCanvas.addEventListener('mousedown',e=>{ gDragging=true; gDragStart={x:e.clientX,y:e.clientY}; gTransformStart={...gTransform}; gCanvas.style.cursor='grabbing'; });
+  gCanvas.addEventListener('mouseup',e=>{
+    if(!gDragging) return;
+    const moved=Math.hypot(e.clientX-gDragStart.x,e.clientY-gDragStart.y)>3;
+    gDragging=false; gCanvas.style.cursor='grab';
+    if(!moved){
+      const rect=gCanvas.getBoundingClientRect();
+      const node=gNodeAt(e.clientX-rect.left,e.clientY-rect.top);
+      if(node){ gSelected=(gSelected===node)?null:node; if(!gAnimFrame) gDraw(); }
+    }
+  });
+  gCanvas.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const rect=gCanvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    const d=e.deltaY>0?.88:1.12;
+    const ns=Math.max(.15,Math.min(5,gTransform.scale*d));
+    gTransform.x=mx-(mx-gTransform.x)*(ns/gTransform.scale);
+    gTransform.y=my-(my-gTransform.y)*(ns/gTransform.scale);
+    gTransform.scale=ns;
+    if(!gAnimFrame) gDraw();
+  },{passive:false});
+}
+
+function resetGraphView(){ gTransform={x:0,y:0,scale:1}; gSelected=null; if(!gAnimFrame) gDraw(); }
+function go(i){ document.getElementById('step-'+i)?.scrollIntoView({behavior:'smooth',block:'start'}); document.querySelectorAll('.si').forEach(el=>el.classList.remove('active')); document.getElementById('nav-'+i)?.classList.add('active'); }
 </script>
 </body>
 </html>
