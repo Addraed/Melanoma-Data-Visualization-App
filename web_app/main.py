@@ -1,22 +1,20 @@
 """
 Melanoma Subtype Classifier — Backend FastAPI
-Equivalente web a TCGAbiolinks::TCGAquery_subtype("skcm") + pipeline FP-Growth
+Ejecuta R via subprocess (Rscript) en lugar de rpy2
 """
 
 import os
 import json
-import time
+import subprocess
 import logging
-import asyncio
 from pathlib import Path
 from typing import Optional
-from functools import lru_cache
 
 import pandas as pd
 import numpy as np
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
@@ -24,186 +22,23 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Melanoma Pipeline API", version="1.0.0")
 
-CACHE_PATH = Path("/data_cache/skcm_subtipos.rds")
-CACHE_CSV = Path("/data_cache/skcm_subtipos.csv")
+CACHE_CSV  = Path("/data_cache/skcm_subtipos.csv")
+SCRIPT_DIR = Path("/scripts")
+SCRIPT_DIR.mkdir(parents=True, exist_ok=True)
 
-# ============================================================
-# UTILIDADES R / rpy2
-# ============================================================
-
-def get_r_interface():
-    """Inicializa rpy2 lazy — solo cuando se necesita."""
-    try:
-        import rpy2.robjects as ro
-        from rpy2.robjects import pandas2ri
-        from rpy2.robjects.packages import importr
-        pandas2ri.activate()
-        return ro, pandas2ri
-    except Exception as e:
-        logger.error(f"rpy2 no disponible: {e}")
-        return None, None
-
-
-def load_skcm_from_r() -> pd.DataFrame:
-    """
-    Carga los subtipos SKCM via TCGAbiolinks::TCGAquery_subtype('skcm').
-    Equivalente exacto al comando del TFM original.
-    Usa caché RDS si está disponible.
-    """
-    ro, pandas2ri = get_r_interface()
-    if ro is None:
-        raise RuntimeError("rpy2 no disponible")
-
-    # Intentar cargar desde caché RDS primero
-    if CACHE_PATH.exists():
-        logger.info("Cargando desde caché RDS...")
-        r_code = f"""
-        skcm <- readRDS('{CACHE_PATH}')
-        skcm
-        """
-        result = ro.r(r_code)
-        df = pandas2ri.rpy2py(result)
-        logger.info(f"Cache cargado: {len(df)} pacientes")
-        return df
-
-    # Si no hay caché, descargar via TCGAbiolinks
-    logger.info("Descargando via TCGAbiolinks::TCGAquery_subtype('skcm')...")
-    r_code = f"""
-    suppressMessages(library(TCGAbiolinks))
-    skcm <- TCGAquery_subtype(tumor = 'skcm')
-    dir.create('{CACHE_PATH.parent}', showWarnings=FALSE, recursive=TRUE)
-    saveRDS(skcm, '{CACHE_PATH}')
-    skcm
-    """
-    result = ro.r(r_code)
-    df = pandas2ri.rpy2py(result)
-    logger.info(f"Descargado y cacheado: {len(df)} pacientes")
-    return df
-
-
-def prepare_pipeline_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Selecciona y limpia las 6 variables del TFM.
-    Maneja distintos nombres de columna según versión de TCGAbiolinks.
-    """
-    # Mapeo de posibles nombres de columna a los del TFM
-    col_map = {
-        "MUTATIONSUBTYPES": ["MUTATIONSUBTYPES", "Mutation.Subtype", "mutation_subtype"],
-        "UV-signature": ["UV-signature", "UV.signature", "UV_signature"],
-        "RNASEQ-CLUSTER_CONSENHIER": ["RNASEQ-CLUSTER_CONSENHIER", "RNASEQ.CLUSTER_CONSENHIER", "RNAseq_cluster"],
-        "MethTypes.201408": ["MethTypes.201408", "MethTypes201408", "Meth.type"],
-        "MIRCluster": ["MIRCluster", "MIR.cluster", "miRNA_cluster"],
-        "LYMPHOCYTE.SCORE": ["LYMPHOCYTE.SCORE", "Lymphocyte.Score", "lymphocyte_score"],
-    }
-
-    result = pd.DataFrame()
-    available = list(df.columns)
-
-    for target_col, candidates in col_map.items():
-        found = None
-        for c in candidates:
-            if c in available:
-                found = c
-                break
-        if found:
-            result[target_col] = df[found]
-        else:
-            logger.warning(f"Columna '{target_col}' no encontrada. Cols disponibles: {available[:10]}")
-            result[target_col] = None
-
-    # Limpiar valores nulos
-    result = result.dropna(subset=["MUTATIONSUBTYPES"])
-    result["LYMPHOCYTE.SCORE"] = pd.to_numeric(result["LYMPHOCYTE.SCORE"], errors="coerce").fillna(0)
-
-    return result.reset_index(drop=True)
-
-
-# ============================================================
-# FP-GROWTH + REGLAS DE ASOCIACIÓN (Python, equivalente al TFM)
-# ============================================================
-
-def run_fpgrowth_pipeline(df: pd.DataFrame, min_support: float = 0.015,
-                           min_confidence: float = 0.85,
-                           min_lift: float = 1.0,
-                           min_leverage: float = 0.0) -> dict:
-    """
-    Pipeline completo FP-Growth equivalente al notebook del TFM.
-    Retorna itemsets, todas las reglas, y las reglas filtradas.
-    """
-    from mlxtend.frequent_patterns import fpgrowth, association_rules
-
-    # One-hot encoding — igual que el TFM
-    cat_cols = ["MUTATIONSUBTYPES", "UV-signature", "RNASEQ-CLUSTER_CONSENHIER",
-                "MethTypes.201408", "MIRCluster"]
-    num_col = "LYMPHOCYTE.SCORE"
-
-    transacciones = pd.get_dummies(df[cat_cols], prefix_sep="=")
-
-    # Discretizar LYMPHOCYTE.SCORE en bins: 0.0, low(1-3), high(4+)
-    lscore = pd.to_numeric(df[num_col], errors="coerce").fillna(0)
-    transacciones["LYMPHOCYTE.SCORE=0.0"] = (lscore == 0).astype(int)
-    transacciones["LYMPHOCYTE.SCORE=low"]  = ((lscore >= 1) & (lscore <= 3)).astype(int)
-    transacciones["LYMPHOCYTE.SCORE=high"] = (lscore >= 4).astype(int)
-
-    transacciones = transacciones.astype(bool)
-
-    # FP-Growth
-    itemsets = fpgrowth(transacciones, min_support=min_support,
-                        use_colnames=True, max_len=4)
-    logger.info(f"FP-Growth: {len(itemsets)} itemsets frecuentes")
-
-    # Reglas de asociación
-    reglas = association_rules(itemsets, metric="confidence",
-                               min_threshold=min_confidence)
-    logger.info(f"Reglas generadas: {len(reglas)}")
-
-    # Filtrar por lift y leverage
-    reglas_filtradas = reglas[
-        (reglas["lift"] > min_lift) & (reglas["leverage"] > min_leverage)
-    ].copy()
-
-    # Filtrar por consecuente = MUTATIONSUBTYPES (como en el TFM)
-    def has_mutation_cons(cons):
-        return any("MUTATIONSUBTYPES" in str(c) for c in cons)
-
-    reglas_clinicas = reglas_filtradas[
-        reglas_filtradas["consequents"].apply(has_mutation_cons)
-    ].copy()
-
-    logger.info(f"Reglas clínicas (MUTATIONSUBTYPES consecuente): {len(reglas_clinicas)}")
-
-    # Convertir frozensets a listas para serialización JSON
-    def fs_to_list(series):
-        return series.apply(lambda x: list(x))
-
-    def rules_to_dict(df_rules):
-        if len(df_rules) == 0:
-            return []
-        r = df_rules.copy()
-        r["antecedents"] = fs_to_list(r["antecedents"])
-        r["consequents"] = fs_to_list(r["consequents"])
-        return r[["antecedents", "consequents", "support", "confidence",
-                   "lift", "leverage", "conviction"]].round(4).to_dict(orient="records")
-
-    return {
-        "n_itemsets": len(itemsets),
-        "n_rules_total": len(reglas),
-        "n_rules_filtered": len(reglas_filtradas),
-        "n_rules_clinical": len(reglas_clinicas),
-        "rules_all": rules_to_dict(reglas_filtradas.head(500)),
-        "rules_clinical": rules_to_dict(
-            reglas_clinicas.sort_values("lift", ascending=False)
-        ),
-        "params": {
-            "min_support": min_support,
-            "min_confidence": min_confidence,
-            "min_lift": min_lift,
-            "min_leverage": min_leverage,
-            "n_patients": len(df),
-            "n_encoded_cols": len(transacciones.columns),
-        }
-    }
-
+# Script R para exportar subtipos SKCM
+R_EXPORT_SCRIPT = SCRIPT_DIR / "export_skcm.R"
+R_EXPORT_SCRIPT.write_text("""
+library(TCGAbiolinks)
+skcm <- TCGAquery_subtype(tumor = "skcm")
+cols <- c("MUTATIONSUBTYPES","UV-signature","RNASEQ-CLUSTER_CONSENHIER",
+          "MethTypes.201408","MIRCluster","LYMPHOCYTE.SCORE")
+available <- cols[cols %in% colnames(skcm)]
+out <- skcm[, available, drop=FALSE]
+dir.create("/data_cache", showWarnings=FALSE, recursive=TRUE)
+write.csv(out, "/data_cache/skcm_subtipos.csv", row.names=FALSE)
+cat("Exportado:", nrow(out), "pacientes\\n")
+""")
 
 # Reglas exactas del TFM — Tabla 3 de la memoria
 TFM_RULES = [
@@ -221,14 +56,150 @@ TFM_RULES = [
 ]
 
 
-def match_tfm_rule(computed_rule: dict) -> Optional[int]:
-    """
-    Comprueba si una regla calculada coincide con alguna regla del TFM.
-    Retorna el ID de la regla del TFM o None.
-    """
-    ant_set = set(computed_rule["antecedents"])
-    cons_set = set(computed_rule["consequents"])
+def run_rscript(script_path: Path, timeout: int = 120) -> tuple[bool, str]:
+    """Ejecuta un script R via Rscript y retorna (éxito, output)."""
+    try:
+        result = subprocess.run(
+            ["Rscript", "--vanilla", str(script_path)],
+            capture_output=True, text=True, timeout=timeout
+        )
+        output = result.stdout + result.stderr
+        return result.returncode == 0, output
+    except subprocess.TimeoutExpired:
+        return False, "Timeout ejecutando Rscript"
+    except FileNotFoundError:
+        return False, "Rscript no encontrado en PATH"
+    except Exception as e:
+        return False, str(e)
 
+
+def load_skcm_data() -> pd.DataFrame:
+    """Carga el CSV cacheado o lo genera via Rscript."""
+    if CACHE_CSV.exists():
+        logger.info("Cargando desde caché CSV")
+        return pd.read_csv(CACHE_CSV)
+
+    logger.info("Generando datos via Rscript...")
+    ok, output = run_rscript(R_EXPORT_SCRIPT, timeout=180)
+    logger.info(f"Rscript output: {output[:500]}")
+
+    if ok and CACHE_CSV.exists():
+        return pd.read_csv(CACHE_CSV)
+
+    raise RuntimeError(f"No se pudo generar el CSV: {output[:200]}")
+
+
+def run_fpgrowth_pipeline(df: pd.DataFrame,
+                           min_support: float = 0.015,
+                           min_confidence: float = 0.85,
+                           min_lift: float = 1.0,
+                           min_leverage: float = 0.0) -> dict:
+    """Pipeline FP-Growth equivalente al notebook del TFM."""
+    from mlxtend.frequent_patterns import fpgrowth, association_rules
+
+    # Mapear nombres de columna — TCGAbiolinks puede exportar con distintos separadores
+    col_aliases = {
+        "MUTATIONSUBTYPES":          ["MUTATIONSUBTYPES", "Mutation.Subtype"],
+        "UV-signature":              ["UV-signature", "UV.signature", "UV_signature"],
+        "RNASEQ-CLUSTER_CONSENHIER": ["RNASEQ-CLUSTER_CONSENHIER", "RNASEQ.CLUSTER_CONSENHIER",
+                                      "RNASEQ_CLUSTER_CONSENHIER"],
+        "MethTypes.201408":          ["MethTypes.201408", "MethTypes201408", "MethTypes_201408"],
+        "MIRCluster":                ["MIRCluster", "MIR.cluster"],
+        "LYMPHOCYTE.SCORE":          ["LYMPHOCYTE.SCORE", "Lymphocyte.Score", "LYMPHOCYTE_SCORE"],
+    }
+
+    def find_col(target, df_cols):
+        if target in df_cols:
+            return target
+        for alias in col_aliases.get(target, []):
+            if alias in df_cols:
+                return alias
+        norm = lambda s: s.lower().replace("-","").replace(".","").replace("_","")
+        for col in df_cols:
+            if norm(col) == norm(target):
+                return col
+        return None
+
+    rename_map = {}
+    for standard in col_aliases:
+        found = find_col(standard, df.columns)
+        if found and found != standard:
+            rename_map[found] = standard
+    if rename_map:
+        df = df.rename(columns=rename_map)
+        logger.info(f"Columnas renombradas: {rename_map}")
+
+    logger.info(f"Columnas disponibles: {list(df.columns)}")
+
+    cat_cols = ["MUTATIONSUBTYPES", "UV-signature", "RNASEQ-CLUSTER_CONSENHIER",
+                "MethTypes.201408", "MIRCluster"]
+    num_col = "LYMPHOCYTE.SCORE"
+
+    cat_cols = [c for c in cat_cols if c in df.columns]
+    if not cat_cols:
+        raise ValueError(f"No se encontraron columnas. Disponibles: {list(df.columns)}")
+
+    # One-hot encoding
+    transacciones = pd.get_dummies(df[cat_cols], prefix_sep="=")
+    lscore_col = find_col("LYMPHOCYTE.SCORE", df.columns)
+    lscore = pd.to_numeric(df[lscore_col] if lscore_col else pd.Series([0]*len(df)), errors="coerce").fillna(0)
+    transacciones["LYMPHOCYTE.SCORE=0.0"] = (lscore == 0).astype(int)
+    transacciones["LYMPHOCYTE.SCORE=low"]  = ((lscore >= 1) & (lscore <= 3)).astype(int)
+    transacciones["LYMPHOCYTE.SCORE=high"] = (lscore >= 4).astype(int)
+    transacciones = transacciones.astype(bool)
+
+    # FP-Growth
+    itemsets = fpgrowth(transacciones, min_support=min_support,
+                        use_colnames=True, max_len=4)
+    reglas = association_rules(itemsets, metric="confidence",
+                               min_threshold=min_confidence)
+
+    # Filtrar
+    reglas_filtradas = reglas[
+        (reglas["lift"] > min_lift) & (reglas["leverage"] > min_leverage)
+    ].copy()
+
+    def has_mutation_cons(cons):
+        return any("MUTATIONSUBTYPES" in str(c) for c in cons)
+
+    reglas_clinicas = reglas_filtradas[
+        reglas_filtradas["consequents"].apply(has_mutation_cons)
+    ].copy()
+
+    def fs_to_list(series):
+        return series.apply(lambda x: list(x))
+
+    def rules_to_dict(df_r):
+        if len(df_r) == 0:
+            return []
+        r = df_r.copy()
+        r["antecedents"] = fs_to_list(r["antecedents"])
+        r["consequents"] = fs_to_list(r["consequents"])
+        return r[["antecedents","consequents","support","confidence",
+                   "lift","leverage","conviction"]].round(4).to_dict(orient="records")
+
+    return {
+        "n_itemsets": len(itemsets),
+        "n_rules_total": len(reglas),
+        "n_rules_filtered": len(reglas_filtradas),
+        "n_rules_clinical": len(reglas_clinicas),
+        "rules_all": rules_to_dict(reglas_filtradas.head(500)),
+        "rules_clinical": rules_to_dict(
+            reglas_clinicas.sort_values("lift", ascending=False)
+        ),
+        "params": {
+            "min_support": min_support,
+            "min_confidence": min_confidence,
+            "min_lift": min_lift,
+            "min_leverage": min_leverage,
+            "n_patients": len(df),
+        }
+    }
+
+
+def match_tfm_rule(rule: dict) -> Optional[int]:
+    ant_set = set(rule["antecedents"])
+    cons_set = set(rule["consequents"])
     for tfm in TFM_RULES:
         if set(tfm["ant"]) == ant_set and set(tfm["cons"]) == cons_set:
             return tfm["id"]
@@ -236,7 +207,7 @@ def match_tfm_rule(computed_rule: dict) -> Optional[int]:
 
 
 # ============================================================
-# ENDPOINTS API
+# ENDPOINTS
 # ============================================================
 
 class PipelineParams(BaseModel):
@@ -253,70 +224,37 @@ def health():
 
 @app.get("/api/tcga-status")
 def tcga_status():
-    """Informa si el caché SKCM está disponible."""
-    rds_ok = CACHE_PATH.exists()
-    csv_ok = CACHE_CSV.exists()
+    rscript_ok = subprocess.run(
+        ["which", "Rscript"], capture_output=True
+    ).returncode == 0
     return {
-        "cache_rds": rds_ok,
-        "cache_csv": csv_ok,
-        "rpy2_available": get_r_interface()[0] is not None,
+        "cache_csv": CACHE_CSV.exists(),
+        "rscript_available": rscript_ok,
+        "cache_rows": len(pd.read_csv(CACHE_CSV)) if CACHE_CSV.exists() else 0,
     }
 
 
 @app.get("/api/tcga-data")
 def get_tcga_data():
-    """
-    Retorna el dataset TCGA-SKCM completo con las 6 variables del TFM.
-    Equivalente a TCGAbiolinks::TCGAquery_subtype('skcm').
-    Usa caché si está disponible.
-    """
-    # Intentar desde caché CSV primero (más rápido)
-    if CACHE_CSV.exists():
-        df = pd.read_csv(CACHE_CSV)
-        return JSONResponse({
-            "source": "cache_csv",
-            "n_patients": len(df),
-            "columns": list(df.columns),
-            "data": df.to_dict(orient="records"),
-        })
-
-    # Intentar via R / TCGAbiolinks
     try:
-        df_raw = load_skcm_from_r()
-        df = prepare_pipeline_data(df_raw)
-        # Guardar CSV para futuras peticiones
-        CACHE_CSV.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(CACHE_CSV, index=False)
+        df = load_skcm_data()
         return JSONResponse({
-            "source": "tcgabiolinks_r",
+            "source": "cache_csv" if not CACHE_CSV.exists() else "tcgabiolinks_r",
             "n_patients": len(df),
             "columns": list(df.columns),
-            "data": df.to_dict(orient="records"),
+            "data": df.fillna("").to_dict(orient="records"),
         })
     except Exception as e:
-        logger.error(f"Error cargando datos TCGA: {e}")
         raise HTTPException(status_code=503, detail=str(e))
 
 
 @app.post("/api/run-pipeline")
 def run_pipeline(params: PipelineParams):
-    """
-    Ejecuta el pipeline completo FP-Growth sobre los datos TCGA-SKCM.
-    Retorna itemsets, reglas calculadas, reglas clínicas y comparativa con TFM.
-    """
-    # Cargar datos
-    if CACHE_CSV.exists():
-        df = pd.read_csv(CACHE_CSV)
-    else:
-        try:
-            df_raw = load_skcm_from_r()
-            df = prepare_pipeline_data(df_raw)
-            CACHE_CSV.parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(CACHE_CSV, index=False)
-        except Exception as e:
-            raise HTTPException(status_code=503, detail=f"Datos no disponibles: {e}")
+    try:
+        df = load_skcm_data()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Datos no disponibles: {e}")
 
-    # Ejecutar pipeline
     try:
         result = run_fpgrowth_pipeline(
             df,
@@ -326,46 +264,28 @@ def run_pipeline(params: PipelineParams):
             min_leverage=params.min_leverage,
         )
     except Exception as e:
-        logger.error(f"Error en pipeline: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-    # Marcar qué reglas calculadas coinciden con las del TFM
     for rule in result["rules_clinical"]:
-        tfm_id = match_tfm_rule(rule)
-        rule["tfm_match"] = tfm_id
+        rule["tfm_match"] = match_tfm_rule(rule)
 
-    # Añadir las reglas del TFM siempre
     result["tfm_rules"] = TFM_RULES
-
-    # Stats de coincidencia
     matched = sum(1 for r in result["rules_clinical"] if r.get("tfm_match"))
     result["tfm_match_stats"] = {
         "tfm_rules_total": len(TFM_RULES),
         "computed_rules_total": result["n_rules_clinical"],
         "matched": matched,
     }
-
     return JSONResponse(result)
-
-
-@app.post("/api/upload-and-run")
-async def upload_and_run(params: PipelineParams):
-    """Ejecuta el pipeline sobre datos subidos manualmente."""
-    pass  # Implementado en el frontend via /api/run-pipeline con datos en memoria
 
 
 @app.get("/api/tfm-rules")
 def get_tfm_rules():
-    """Retorna las 11 reglas exactas del TFM (Tabla 3 de la memoria)."""
-    return JSONResponse({"rules": TFM_RULES, "source": "TFM Tabla 3, Cell 2015"})
+    return JSONResponse({"rules": TFM_RULES})
 
 
-# ============================================================
-# FRONTEND ESTÁTICO
-# ============================================================
-
+# Frontend estático
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
 
 @app.get("/", response_class=HTMLResponse)
 def serve_frontend():
