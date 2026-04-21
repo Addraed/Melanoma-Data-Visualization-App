@@ -1,9 +1,10 @@
-# Base: R + Python en Ubuntu
+# Usamos ubuntu con R ya instalado via rocker, pero añadimos rpy2 del sistema
 FROM rocker/r-ver:4.3.3
 
-# Instalar Python y dependencias del sistema
+# Instalar Python, dependencias y rpy2 del sistema (pre-compilado, sin necesidad de compilar)
 RUN apt-get update && apt-get install -y \
     python3 python3-pip python3-dev \
+    python3-rpy2 \
     gcc g++ make \
     libcurl4-openssl-dev libssl-dev libxml2-dev \
     libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
@@ -30,16 +31,9 @@ RUN R -e "\
 
 WORKDIR /app
 
-# R_HOME necesario para rpy2
 ENV R_HOME=/usr/local/lib/R
 
-# Instalar setuptools compatible + rpy2 via tarball directo de PyPI
-# rpy2 3.5.14 es la última versión estable con metadatos correctos
-RUN pip3 install --no-cache-dir "setuptools==68.2.2" "wheel==0.41.3"
-RUN pip3 install --no-cache-dir \
-    "https://files.pythonhosted.org/packages/source/r/rpy2/rpy2-3.5.14.tar.gz"
-
-# Instalar el resto de dependencias
+# Instalar dependencias Python (sin rpy2 — viene del sistema)
 COPY web_app/requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
