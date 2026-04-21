@@ -147,7 +147,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
   padding:3px 10px;font-size:.71rem;display:flex;align-items:center;gap:4px;}
 .vdot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
 
-/* RULES PANEL — TFM + calculadas */
+/* RULES PANEL TFM + calculadas */
 .rules-tabs{display:flex;gap:0;border:1px solid var(--border);border-radius:8px;
   overflow:hidden;margin-bottom:13px;}
 .rtab{flex:1;padding:8px 12px;text-align:center;cursor:pointer;font-size:.77rem;
@@ -230,7 +230,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
     <div class="panel" id="step-0">
       <div class="pt">📂 Carga de datos</div>
       <div class="pd">
-        Los datos son el CSV original del TFM — los mismos 331 pacientes TCGA-SKCM
+        Los datos son el CSV original del TFM (los mismos 331 pacientes TCGA-SKCM)
         con las 6 variables del paper Cell 2015, descargados de la misma fuente que el notebook original
         (<code>TCGAquery_subtype("skcm")</code>). También puedes subir tu propio CSV o usar datos sintéticos.
       </div>
@@ -244,7 +244,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
       <div class="spanel active" id="src-api">
         <div class="callout cb" id="tcga-info">
           <span>ℹ️</span><span>
-            Carga el CSV original del TFM — mismos 331 pacientes y 6 variables que usó el notebook de Google Colab.
+            Carga el CSV original del TFM, mismos 331 pacientes y 6 variables que usó el notebook de Google Colab.
             Se descarga desde la misma URL del TFM y se cachea en el servidor.
           </span>
         </div>
@@ -348,7 +348,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
       <div id="res-content" class="hidden">
 
         <!-- SCATTER -->
-        <div class="sec-h">Soporte vs. Confianza — reglas clínicas calculadas</div>
+        <div class="sec-h">Soporte vs. Confianza de las reglas calculadas</div>
         <div class="chc" style="margin-bottom:16px">
           <canvas id="sc" width="680" height="260"></canvas>
           <div class="tip" id="tip"></div>
@@ -360,10 +360,10 @@ tr:hover td{background:rgba(255,255,255,.012);}
             📋 Reglas TFM <span id="tfm-count" class="badge bb" style="margin-left:5px">11</span>
           </div>
           <div class="rtab" id="rt-1" onclick="switchRulesTab(1)">
-            🔬 Calculadas por el pipeline <span id="calc-count" class="badge bb" style="margin-left:5px">—</span>
+            🔬 Calculadas por el pipeline <span id="calc-count" class="badge bb" style="margin-left:5px"></span>
           </div>
           <div class="rtab" id="rt-2" onclick="switchRulesTab(2)">
-            ✅ Coincidencias TFM ↔ Pipeline <span id="match-count" class="badge bg" style="margin-left:5px">—</span>
+            ✅ Coincidencias TFM ↔ Pipeline <span id="match-count" class="badge bg" style="margin-left:5px"></span>
           </div>
         </div>
 
@@ -371,7 +371,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
         <div id="rules-panel-0">
           <div class="callout cg" style="margin-bottom:11px">
             <span>📖</span>
-            <span>Las <strong>11 reglas de la Tabla 3 de la memoria</strong> — resultado final del TFM original.
+            <span>Las <strong>11 reglas de la Tabla 3 de la memoria</strong>, resultado final del TFM original.
             Las reglas marcadas con ✅ también han sido encontradas por el pipeline calculado sobre los datos actuales.</span>
           </div>
           <div id="tfm-rules-list"></div>
