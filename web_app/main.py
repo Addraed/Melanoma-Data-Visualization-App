@@ -158,9 +158,10 @@ def generate_synthetic_tcga(n: int = 331, noise_pct: float = 0.08) -> pd.DataFra
         for k, v in prof["d"].items():
             if k == "LYMPHOCYTE.SCORE":
                 lo, hi = v
-                row[k] = lo if lo == hi else random.randint(lo, hi)
+                val = lo if lo == hi else random.randint(lo, hi)
                 if noisy:
-                    row[k] = random.randint(0, 6)
+                    val = random.randint(0, 6)
+                row[k] = float(val)  # 0.0, 1.0, ... 6.0 igual que el TFM
             else:
                 row[k] = random.choice(all_vals[k]) if noisy else v
         rows.append(row)
@@ -248,14 +249,20 @@ def run_fpgrowth_pipeline(df: pd.DataFrame,
     if not cat_cols:
         raise ValueError(f"Sin columnas categóricas. Disponibles: {list(df.columns)}")
 
-    transacciones = pd.get_dummies(df[cat_cols], prefix_sep="=")
-
+    # LYMPHOCYTE.SCORE: tratar como categórica con valores 0.0..6.0
+    # igual que en el TFM original — sin discretización en bins
     if "LYMPHOCYTE.SCORE" in df.columns:
-        lscore = pd.to_numeric(df["LYMPHOCYTE.SCORE"], errors="coerce").fillna(0)
-        transacciones["LYMPHOCYTE.SCORE=0.0"] = (lscore == 0).astype(int)
-        transacciones["LYMPHOCYTE.SCORE=low"]  = ((lscore >= 1) & (lscore <= 3)).astype(int)
-        transacciones["LYMPHOCYTE.SCORE=high"] = (lscore >= 4).astype(int)
+        lscore = pd.to_numeric(df["LYMPHOCYTE.SCORE"], errors="coerce")
+        # Redondear a 1 decimal para normalizar 0 → 0.0, 2 → 2.0, etc.
+        df = df.copy()
+        df["LYMPHOCYTE.SCORE"] = lscore.apply(
+            lambda x: f"{float(x):.1f}" if pd.notna(x) else None
+        )
+        cat_cols_all = cat_cols + ["LYMPHOCYTE.SCORE"]
+    else:
+        cat_cols_all = cat_cols
 
+    transacciones = pd.get_dummies(df[cat_cols_all], prefix_sep="=")
     transacciones = transacciones.astype(bool)
     logger.info(f"Transacciones: {transacciones.shape}")
 
