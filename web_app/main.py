@@ -202,14 +202,17 @@ REQUIRED_COLS = {"MUTATIONSUBTYPES","UV-signature","RNASEQ-CLUSTER_CONSENHIER",
 
 
 def clean_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Limpia valores nulos representados como '-' en el CSV de TCGAbiolinks."""
+    """
+    Limpia valores nulos representados como '-' o 'NA' en el CSV de TCGAbiolinks.
+    Se mantienen TODAS las filas — el filtro por MUTATIONSUBTYPES se aplica
+    como paso de filtrado clínico en el pipeline de reglas de asociación.
+    """
     df = df.replace({'-': None, 'NA': None, '': None})
-    df = df.dropna(subset=['MUTATIONSUBTYPES'])
     if 'LYMPHOCYTE.SCORE' in df.columns:
         df['LYMPHOCYTE.SCORE'] = pd.to_numeric(
             df['LYMPHOCYTE.SCORE'], errors='coerce'
         ).apply(lambda x: float(x) if pd.notna(x) else None)
-    logger.info(f"DataFrame limpiado: {len(df)} filas válidas")
+    logger.info(f"DataFrame limpiado: {len(df)} filas ({df['MUTATIONSUBTYPES'].isna().sum()} sin subtipo — se mantienen para el análisis)")
     return df.reset_index(drop=True)
 
 
