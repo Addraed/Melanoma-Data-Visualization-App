@@ -192,32 +192,46 @@ def run_rscript(script_path: Path, timeout: int = 120):
         return False, str(e)
 
 
+# URL del CSV original del TFM (Google Drive del notebook)
+GDRIVE_URL = "https://drive.google.com/uc?export=download&id=1VF3MqQ3J7GBc527ClL2IgJ23XTc5-hX7"
+
+# Columnas requeridas del TFM
+REQUIRED_COLS = {"MUTATIONSUBTYPES","UV-signature","RNASEQ-CLUSTER_CONSENHIER",
+                 "MethTypes.201408","MIRCluster","LYMPHOCYTE.SCORE"}
+
+
 def load_skcm_data() -> pd.DataFrame:
+    """
+    Carga los datos TCGA-SKCM del TFM.
+    Orden de prioridad:
+    1. Caché CSV local (si existe y está completo)
+    2. Google Drive — URL del notebook original del TFM
+    """
+    # 1. Intentar caché local
     if CACHE_CSV.exists():
         df = pd.read_csv(CACHE_CSV)
-        # Validar que tiene las 6 columnas — si faltan, regenerar
-        required = {"MUTATIONSUBTYPES","UV-signature","RNASEQ-CLUSTER_CONSENHIER",
-                    "MethTypes.201408","MIRCluster","LYMPHOCYTE.SCORE"}
-        missing = required - set(df.columns)
-        if missing:
-            logger.warning(f"CSV incompleto, faltan: {missing}. Regenerando...")
-            CACHE_CSV.unlink()
-        else:
-            logger.info(f"CSV cargado: {len(df)} pacientes, columnas: {list(df.columns)}")
+        missing = REQUIRED_COLS - set(df.columns)
+        if not missing:
+            logger.info(f"CSV cargado desde caché: {len(df)} pacientes")
             return df
+        logger.warning(f"Caché incompleto (faltan: {missing}), descargando de nuevo...")
+        CACHE_CSV.unlink()
 
-    logger.info("Generando datos via Rscript...")
-    ok, output = run_rscript(R_EXPORT_SCRIPT, timeout=180)
-    logger.info(f"Rscript: {output[:800]}")
-
-    if ok and CACHE_CSV.exists():
+    # 2. Descargar desde Google Drive (misma URL que el notebook del TFM)
+    logger.info(f"Descargando datos desde Google Drive (URL del TFM)...")
+    try:
+        import urllib.request
+        CACHE_CSV.parent.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(GDRIVE_URL, str(CACHE_CSV))
         df = pd.read_csv(CACHE_CSV)
-        missing = required - set(df.columns)
+        missing = REQUIRED_COLS - set(df.columns)
         if missing:
-            raise RuntimeError(f"CSV generado pero faltan columnas: {missing}. Output R:\n{output[:500]}")
+            CACHE_CSV.unlink()
+            raise RuntimeError(f"CSV descargado pero faltan columnas: {missing}")
+        logger.info(f"Descargado OK: {len(df)} pacientes, cols: {list(df.columns)}")
         return df
-
-    raise RuntimeError(f"No se pudo generar CSV: {output[:300]}")
+    except Exception as e:
+        raise RuntimeError(f"No se pudieron cargar los datos del TFM: {e}")
 
 
 def run_fpgrowth_pipeline(df: pd.DataFrame,
