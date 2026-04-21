@@ -982,7 +982,7 @@ async function loadSynthetic() {
 checkAPI();
 
 // ============================================================
-// GRAFO — Paso 7
+// GRAFO 
 // ============================================================
 let gNodes = [], gEdges = [], gNodeMap = {};
 let gCanvas, gCtx, gW, gH;
@@ -1053,8 +1053,14 @@ function rebuildGraph() {
   const minLift = parseFloat(document.getElementById('g-lift')?.value || 1);
   const sub = document.getElementById('g-sub')?.value || '';
 
-  let rules = gAllRules.filter(r => (r.lift||0) >= minLift);
-  if (sub) rules = rules.filter(r => [...r.antecedents,...r.consequents].some(x=>x.includes(sub)));
+  // Solo reglas cuyo consecuente sea un subtipo de mutación
+  let rules = gAllRules.filter(r =>
+    (r.lift||0) >= minLift &&
+    r.consequents.some(c => c.includes('MUTATIONSUBTYPES='))
+  );
+  if (sub) rules = rules.filter(r =>
+    [...r.antecedents,...r.consequents].some(x=>x.includes(sub))
+  );
 
   // Construir grafo
   gNodeMap = {}; gNodes = []; gEdges = [];
