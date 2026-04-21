@@ -201,6 +201,18 @@ REQUIRED_COLS = {"MUTATIONSUBTYPES","UV-signature","RNASEQ-CLUSTER_CONSENHIER",
                  "MethTypes.201408","MIRCluster","LYMPHOCYTE.SCORE"}
 
 
+def clean_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Limpia valores nulos representados como '-' en el CSV de TCGAbiolinks."""
+    df = df.replace({'-': None, 'NA': None, '': None})
+    df = df.dropna(subset=['MUTATIONSUBTYPES'])
+    if 'LYMPHOCYTE.SCORE' in df.columns:
+        df['LYMPHOCYTE.SCORE'] = pd.to_numeric(
+            df['LYMPHOCYTE.SCORE'], errors='coerce'
+        ).apply(lambda x: float(x) if pd.notna(x) else None)
+    logger.info(f"DataFrame limpiado: {len(df)} filas válidas")
+    return df.reset_index(drop=True)
+
+
 def load_skcm_data() -> pd.DataFrame:
     """
     Carga los datos TCGA-SKCM del TFM.
@@ -213,6 +225,7 @@ def load_skcm_data() -> pd.DataFrame:
         df = pd.read_csv(CACHE_CSV)
         missing = REQUIRED_COLS - set(df.columns)
         if not missing:
+            df = clean_df(df)
             logger.info(f"CSV cargado desde caché: {len(df)} pacientes")
             return df
         logger.warning(f"Caché incompleto (faltan: {missing}), descargando de nuevo...")
@@ -229,6 +242,8 @@ def load_skcm_data() -> pd.DataFrame:
         if missing:
             CACHE_CSV.unlink()
             raise RuntimeError(f"CSV descargado pero faltan columnas: {missing}")
+        df = clean_df(df)
+        df.to_csv(CACHE_CSV, index=False)  # guardar versión limpia
         logger.info(f"Descargado OK: {len(df)} pacientes")
         return df
     except Exception as e:
