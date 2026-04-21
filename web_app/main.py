@@ -200,19 +200,6 @@ REQUIRED_COLS = {"MUTATIONSUBTYPES","UV-signature","RNASEQ-CLUSTER_CONSENHIER",
                  "MethTypes.201408","MIRCluster","LYMPHOCYTE.SCORE"}
 
 
-def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Limpia el DataFrame: elimina guiones, NAs y filas sin subtipo."""
-    # Reemplazar "-", "NA", "" por NaN
-    df = df.replace({'-': None, 'NA': None, '': None})
-    # Eliminar filas sin subtipo de mutación (variable objetivo)
-    df = df.dropna(subset=['MUTATIONSUBTYPES'])
-    # LYMPHOCYTE.SCORE: asegurar numérico
-    if 'LYMPHOCYTE.SCORE' in df.columns:
-        df['LYMPHOCYTE.SCORE'] = pd.to_numeric(df['LYMPHOCYTE.SCORE'], errors='coerce').fillna(0)
-    logger.info(f"DataFrame limpiado: {len(df)} filas válidas")
-    return df.reset_index(drop=True)
-
-
 def load_skcm_data() -> pd.DataFrame:
     """
     Carga los datos TCGA-SKCM del TFM.
@@ -225,7 +212,6 @@ def load_skcm_data() -> pd.DataFrame:
         df = pd.read_csv(CACHE_CSV)
         missing = REQUIRED_COLS - set(df.columns)
         if not missing:
-            df = clean_dataframe(df)
             logger.info(f"CSV cargado desde caché: {len(df)} pacientes")
             return df
         logger.warning(f"Caché incompleto (faltan: {missing}), descargando de nuevo...")
@@ -237,13 +223,11 @@ def load_skcm_data() -> pd.DataFrame:
         import urllib.request
         CACHE_CSV.parent.mkdir(parents=True, exist_ok=True)
         urllib.request.urlretrieve(GDRIVE_URL, str(CACHE_CSV))
-        df = pd.read_csv(CACHE_CSV, na_values=['-', 'NA', 'nan', ''])
+        df = pd.read_csv(CACHE_CSV)
         missing = REQUIRED_COLS - set(df.columns)
         if missing:
             CACHE_CSV.unlink()
             raise RuntimeError(f"CSV descargado pero faltan columnas: {missing}")
-        df = clean_dataframe(df)
-        df.to_csv(CACHE_CSV, index=False)  # Guardar versión limpia
         logger.info(f"Descargado OK: {len(df)} pacientes")
         return df
     except Exception as e:
