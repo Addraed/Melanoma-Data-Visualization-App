@@ -200,7 +200,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
 <div class="wrap">
   <aside class="sidebar">
     <div class="sb-h">Pipeline</div>
-    <div class="si active" id="nav-0" onclick="go(0)"><div class="sn" id="sn-0">1</div><div><div class="sl">Carga de datos</div><div class="ss">TCGAbiolinks / CSV</div></div></div>
+    <div class="si active" id="nav-0" onclick="go(0)"><div class="sn" id="sn-0">1</div><div><div class="sl">Carga de datos</div><div class="ss">Datos TFM / CSV / Sintéticos</div></div></div>
     <div class="si" id="nav-1" onclick="go(1)"><div class="sn" id="sn-1">2</div><div><div class="sl">Preprocesamiento</div><div class="ss">One-hot encoding</div></div></div>
     <div class="si" id="nav-2" onclick="go(2)"><div class="sn" id="sn-2">3</div><div><div class="sl">FP-Growth</div><div class="ss">min_sup = 0.015</div></div></div>
     <div class="si" id="nav-3" onclick="go(3)"><div class="sn" id="sn-3">4</div><div><div class="sl">Reglas de asociación</div><div class="ss">conf ≥ 0.85</div></div></div>
@@ -228,24 +228,27 @@ tr:hover td{background:rgba(255,255,255,.012);}
     <div class="panel" id="step-0">
       <div class="pt">📂 Paso 1 — Carga de datos</div>
       <div class="pd">
-        Los datos provienen de <em>TCGAbiolinks</em> (<code>TCGAquery_subtype("skcm")</code>) —
-        el backend R ejecuta esa función y devuelve los 331 pacientes con sus 6 variables del paper Cell 2015.
-        También puedes subir el CSV si ya lo tienes.
+        Los datos son el CSV original del TFM — los mismos 331 pacientes TCGA-SKCM
+        con las 6 variables del paper Cell 2015, descargados de la misma fuente que el notebook original
+        (<code>TCGAquery_subtype("skcm")</code>). También puedes subir tu propio CSV o usar datos sintéticos.
       </div>
 
       <div class="stabs">
-        <div class="stab active" onclick="swSrc('api')">🔗 Via TCGAbiolinks (R)</div>
+        <div class="stab active" onclick="swSrc('api')">📊 Datos TFM (TCGA-SKCM)</div>
         <div class="stab" onclick="swSrc('upload')">📁 Subir CSV</div>
         <div class="stab" onclick="swSrc('synthetic')">🧪 Datos sintéticos</div>
       </div>
 
       <div class="spanel active" id="src-api">
         <div class="callout cb" id="tcga-info">
-          <span>⏳</span><span>Comprobando disponibilidad del backend R...</span>
+          <span>ℹ️</span><span>
+            Carga el CSV original del TFM — mismos 331 pacientes y 6 variables que usó el notebook de Google Colab.
+            Se descarga desde la misma URL del TFM y se cachea en el servidor.
+          </span>
         </div>
         <div class="rbrow">
-          <button class="btn bp" id="btn-load-tcga" onclick="loadFromTCGA()" disabled>
-            ▶ Cargar datos TCGA-SKCM
+          <button class="btn bp" id="btn-load-tcga" onclick="loadFromTCGA()">
+            ▶ Cargar datos TFM (TCGA-SKCM)
           </button>
           <span class="rs" id="st-load"></span>
         </div>
@@ -461,30 +464,18 @@ async function checkAPI() {
 
     // Comprobar estado TCGAbiolinks
     const status = await fetch(`${API}/api/tcga-status`).then(r=>r.json());
-    const rAvail = status.rpy2_available;
-    const cached = status.cache_rds || status.cache_csv;
-
+    const cached = status.cache_csv;
     const infoEl = document.getElementById('tcga-info');
-    const btn = document.getElementById('btn-load-tcga');
-    btn.disabled = false;
 
     if (cached) {
       infoEl.className = 'callout cg';
-      infoEl.innerHTML = '<span>✅</span><span>Datos TCGA-SKCM en caché — carga instantánea.</span>';
-    } else if (rAvail) {
-      infoEl.className = 'callout cb';
-      infoEl.innerHTML = '<span>ℹ️</span><span>Backend R disponible. La primera carga puede tardar ~30s mientras TCGAbiolinks descarga los datos.</span>';
-    } else {
-      infoEl.className = 'callout ca';
-      infoEl.innerHTML = '<span>⚠️</span><span>rpy2 no disponible en este entorno. Usa la opción "Subir CSV".</span>';
-      btn.disabled = true;
+      infoEl.innerHTML = `<span>✅</span><span>Datos en caché — ${status.csv_info?.rows || 331} pacientes listos.</span>`;
     }
 
     document.getElementById('api-status').innerHTML =
-      `<span class="status-dot ${rAvail?'dot-ok':'dot-warn'}"></span>` +
-      `R: ${rAvail?'OK':'no disponible'}<br>` +
       `<span class="status-dot ${cached?'dot-ok':'dot-warn'}"></span>` +
-      `Cache: ${cached?'listo':'no cacheado'}`;
+      `Cache: ${cached?`listo (${status.csv_info?.rows||0} pac.)`:'no cacheado'}<br>` +
+      `<span class="status-dot dot-ok"></span>API online`;
 
   } catch(e) {
     document.getElementById('api-badge').textContent = 'API ✗';
