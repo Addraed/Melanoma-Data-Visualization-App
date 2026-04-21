@@ -1,10 +1,10 @@
 # Base: R + Python en Ubuntu
 FROM rocker/r-ver:4.3.3
 
-# Instalar Python, git y dependencias del sistema
+# Instalar Python y dependencias del sistema
 RUN apt-get update && apt-get install -y \
     python3 python3-pip python3-dev \
-    gcc g++ make git \
+    gcc g++ make \
     libcurl4-openssl-dev libssl-dev libxml2-dev \
     libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
     libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev \
@@ -33,12 +33,11 @@ WORKDIR /app
 # R_HOME necesario para rpy2
 ENV R_HOME=/usr/local/lib/R
 
-# Fijar setuptools y wheel primero
+# Instalar setuptools compatible + rpy2 via tarball directo de PyPI
+# rpy2 3.5.14 es la última versión estable con metadatos correctos
 RUN pip3 install --no-cache-dir "setuptools==68.2.2" "wheel==0.41.3"
-
-# Instalar rpy2 desde GitHub (git ya disponible)
 RUN pip3 install --no-cache-dir \
-    "git+https://github.com/rpy2/rpy2.git@rpy2-3.5.x"
+    "https://files.pythonhosted.org/packages/source/r/rpy2/rpy2-3.5.14.tar.gz"
 
 # Instalar el resto de dependencias
 COPY web_app/requirements.txt .
