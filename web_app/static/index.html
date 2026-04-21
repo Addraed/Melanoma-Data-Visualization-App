@@ -270,7 +270,7 @@ tr:hover td{background:rgba(255,255,255,.012);}
       <div class="spanel" id="src-synthetic">
         <div class="callout ca">
           <span>⚠️</span>
-          <span>Datos sintéticos con las <strong>distribuciones del TFM</strong> y correlaciones de las 11 reglas (Cell 2015). No son datos reales TCGA — útiles para probar el pipeline sin acceso a R.</span>
+          <span>Datos sintéticos con las <strong>distribuciones del TFM</strong> y correlaciones de las 11 reglas (Cell 2015). No son datos reales TCGA.</span>
         </div>
         <div class="g2" style="margin-bottom:12px">
           <div class="pg"><label>Nº pacientes</label><input type="number" id="synth-n" value="331" min="50" max="1000"></div>
@@ -300,8 +300,9 @@ tr:hover td{background:rgba(255,255,255,.012);}
     <div class="panel" id="step-1">
       <div class="pt">⚙️ Preprocesamiento</div>
       <div class="pd">
-        One-hot encoding de las 6 variables categóricas. <code>LYMPHOCYTE.SCORE</code>
-        (0–6) se discretiza en bins: <em>0.0</em>, <em>low (1–3)</em>, <em>high (4+)</em>.
+        One-hot encoding de las 6 variables. <code>LYMPHOCYTE.SCORE</code>
+        se trata como variable categórica con sus valores originales: <em>0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0</em>,
+        igual que en el pipeline original del TFM.
       </div>
       <div id="pre-info" class="callout cb"><span>⏳</span> Carga los datos primero.</div>
       <div id="pre-result" class="hidden">
@@ -616,11 +617,10 @@ function processLoadedData(source) {
     <strong>${c}</strong></div>`).join('');
 
   // Contar columnas one-hot estimadas
-  const catCols = cols.filter(c=>c!=='LYMPHOCYTE.SCORE');
-  const est = catCols.reduce((a,c)=>{
+  const est = cols.reduce((a,c)=>{
     const vals=[...new Set(rawData.map(r=>r[c]).filter(v=>v))];
     return a+vals.length;
-  },0) + 3; // 3 bins de LSCORE
+  },0); // todas las columnas tratadas como categóricas, incluyendo LYMPHOCYTE.SCORE
   document.getElementById('pre-stats').innerHTML =
     mkSc(est,'Columnas binarias estimadas','var(--blue)') +
     mkSc(rawData.length,'Pacientes','var(--green)');
@@ -982,7 +982,7 @@ async function loadSynthetic() {
 checkAPI();
 
 // ============================================================
-// GRÁFICO
+// GRAFO — Paso 7
 // ============================================================
 let gNodes = [], gEdges = [], gNodeMap = {};
 let gCanvas, gCtx, gW, gH;
