@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🧬 Melanoma — Grafo de Reglas</title>
+<style>
+  :root {
+    --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
+    --text:#e6edf3;--muted:#8b949e;
+    --braf:#58a6ff;--ras:#3fb950;--wt:#bc8cff;--nf1:#d29922;
+    --font:'Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);
+    height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+  header{padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:12px;flex-shrink:0;}
+  header h1{font-size:1rem;font-weight:700;}
+  .badge{font-size:.63rem;padding:2px 8px;border-radius:10px;font-weight:700;
+    background:rgba(88,166,255,.12);color:#58a6ff;border:1px solid rgba(88,166,255,.3);}
+
+  .main{display:flex;flex:1;overflow:hidden;}
+
+  /* CONTROLS */
+  .controls{width:220px;background:var(--surface);border-right:1px solid var(--border);
+    padding:14px;overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column;gap:10px;}
+  .ctrl-section{font-size:.67rem;text-transform:uppercase;letter-spacing:.07em;
+    color:var(--muted);font-weight:700;margin-bottom:4px;}
+  .ctrl-row{display:flex;flex-direction:column;gap:3px;}
+  .ctrl-row label{font-size:.72rem;color:var(--muted);}
+  .ctrl-row input[type=range]{width:100%;accent-color:#58a6ff;}
+  .ctrl-row input[type=number]{width:100%;background:var(--bg);border:1px solid var(--border);
+    border-radius:4px;color:var(--text);padding:4px 7px;font-size:.78rem;font-family:var(--font);}
+  .ctrl-row select{width:100%;background:var(--bg);border:1px solid var(--border);
+    border-radius:4px;color:var(--text);padding:4px 7px;font-size:.78rem;font-family:var(--font);}
+
+  .legend{display:flex;flex-direction:column;gap:5px;}
+  .leg-item{display:flex;align-items:center;gap:7px;font-size:.74rem;}
+  .leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .leg-line{width:20px;height:3px;border-radius:2px;flex-shrink:0;}
+
+  .btn{width:100%;padding:7px;border-radius:6px;border:none;cursor:pointer;
+    font-size:.78rem;font-weight:600;font-family:var(--font);transition:all .15s;}
+  .bp{background:#58a6ff;color:#000;}.bp:hover{background:#79b8ff;}
+  .bo{background:transparent;border:1px solid var(--border);color:var(--text);}
+  .bo:hover{border-color:#58a6ff;color:#58a6ff;}
+
+  /* CANVAS */
+  #canvas-wrap{flex:1;position:relative;overflow:hidden;}
+  canvas{display:block;width:100%;height:100%;}
+
+  /* TOOLTIP */
+  .tooltip{position:absolute;background:var(--surface2);border:1px solid var(--border);
+    border-radius:8px;padding:10px 13px;font-size:.75rem;pointer-events:none;
+    display:none;max-width:280px;line-height:1.6;z-index:10;box-shadow:0 4px 20px rgba(0,0,0,.4);}
+  .tooltip strong{color:var(--text);display:block;margin-bottom:4px;}
+  .tooltip .metric{color:var(--muted);font-size:.7rem;}
+  .tooltip .metric span{color:var(--text);font-weight:600;}
+
+  /* INFO PANEL */
+  .info-panel{position:absolute;bottom:14px;left:230px;right:14px;
+    background:rgba(22,27,34,.9);border:1px solid var(--border);border-radius:8px;
+    padding:10px 14px;font-size:.75rem;color:var(--muted);
+    display:flex;gap:20px;align-items:center;backdrop-filter:blur(4px);}
+  .info-stat{display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .info-stat .v{font-size:1.1rem;font-weight:700;color:var(--text);}
+  .info-stat .l{font-size:.65rem;}
+
+  /* LOADING */
+  .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);flex-direction:column;gap:12px;font-size:.85rem;color:var(--muted);}
+  .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:#58a6ff;
+    border-radius:50%;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<header>
+  <div>🧬</div>
+  <h1>Grafo de Reglas de Asociación — TCGA-SKCM</h1>
+  <span class="badge" id="rule-count">Cargando...</span>
+  <div style="margin-left:auto;font-size:.74rem;color:var(--muted)">
+    Arrastra · Scroll para zoom · Hover/Click para detalles
+  </div>
+</header>
+
+<div class="main">
+  <div class="controls">
+    <div>
+      <div class="ctrl-section">Filtros</div>
+      <div class="ctrl-row">
+        <label>Lift mínimo: <strong id="lift-val">1.0</strong></label>
+        <input type="range" id="lift-slider" min="1" max="8" step="0.1" value="1"
+          oninput="document.getElementById('lift-val').textContent=parseFloat(this.value).toFixed(1);renderGraph()">
+      </div>
+      <div class="ctrl-row" style="margin-top:8px">
+        <label>Subtipo</label>
+        <select id="subtype-filter" onchange="renderGraph()">
+          <option value="">Todos</option>
+          <option value="BRAF">BRAF</option>
+          <option value="RAS">RAS</option>
+          <option value="Triple_WT">Triple WT</option>
+          <option value="NF1">NF1</option>
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <div class="ctrl-section">Layout</div>
+      <div class="ctrl-row">
+        <label>Fuerza repulsión: <strong id="rep-val">300</strong></label>
+        <input type="range" id="rep-slider" min="50" max="800" step="10" value="300"
+          oninput="document.getElementById('rep-val').textContent=this.value;initForce()">
+      </div>
+      <div class="ctrl-row" style="margin-top:8px">
+        <label>Distancia aristas</label>
+        <input type="range" id="dist-slider" min="40" max="250" step="10" value="120"
+          oninput="initForce()">
+      </div>
+    </div>
+
+    <div>
+      <div class="ctrl-section">Leyenda — Nodos</div>
+      <div class="legend">
+        <div class="leg-item"><div class="leg-dot" style="background:var(--braf)"></div>BRAF</div>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--ras)"></div>RAS</div>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--wt)"></div>Triple WT</div>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--nf1)"></div>NF1</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#e6edf3;border:2px solid #8b949e"></div>Variable molecular</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#ffa657;border:2px solid #d29922"></div>TFM ✓</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="ctrl-section">Leyenda — Aristas</div>
+      <div class="legend">
+        <div class="leg-item"><div class="leg-line" style="background:#3fb950;opacity:.4"></div>Lift bajo</div>
+        <div class="leg-item"><div class="leg-line" style="background:#f85149"></div>Lift alto</div>
+        <div class="leg-item"><div class="leg-line" style="background:#fff;opacity:.6;border-top:2px dashed #fff"></div>Regla TFM</div>
+      </div>
+    </div>
+
+    <button class="btn bp" onclick="resetView()">⟳ Reset vista</button>
+    <button class="btn bo" onclick="window.close()">← Cerrar</button>
+  </div>
+
+  <div id="canvas-wrap">
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <span>Cargando reglas...</span>
+    </div>
+    <canvas id="c"></canvas>
+    <div class="tooltip" id="tooltip"></div>
+    <div class="info-panel" id="info-panel" style="display:none">
+      <div class="info-stat"><div class="v" id="info-nodes">0</div><div class="l">nodos</div></div>
+      <div class="info-stat"><div class="v" id="info-edges">0</div><div class="l">aristas</div></div>
+      <div class="info-stat"><div class="v" id="info-tfm">0</div><div class="l">reglas TFM</div></div>
+      <div style="flex:1;text-align:right;font-size:.7rem">
+        Nodo seleccionado: <span id="selected-node" style="color:var(--text)">ninguno</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let allRules = [], tfmRules = [];
+let nodes = [], edges = [], nodeMap = {};
+let canvas, ctx, W, H;
+let transform = {x:0, y:0, scale:1};
+let dragging = false, dragStart = {x:0,y:0}, transformStart = {x:0,y:0};
+let hoveredNode = null, selectedNode = null;
+let animFrame = null;
+let simulation = null;
+
+// Colores por subtipo
+const COLORS = {
+  BRAF: '#58a6ff', RAS: '#3fb950', Triple_WT: '#bc8cff', NF1: '#d29922',
+  var: '#c9d1d9', tfm: '#ffa657'
+};
+
+function getSubtypeColor(label) {
+  if (label.includes('BRAF')) return COLORS.BRAF;
+  if (label.includes('RAS'))  return COLORS.RAS;
+  if (label.includes('Triple')) return COLORS.Triple_WT;
+  if (label.includes('NF1'))  return COLORS.NF1;
+  return COLORS.var;
+}
+
+function lerpColor(h1, h2, t) {
+  const c = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const [r1,g1,b1]=c(h1), [r2,g2,b2]=c(h2);
+  return '#'+[r1+(r2-r1)*t, g1+(g2-g1)*t, b1+(b2-b1)*t]
+    .map(x=>Math.round(x).toString(16).padStart(2,'0')).join('');
+}
+
+// ============================================================
+// CARGA DE DATOS
+// ============================================================
+async function loadData() {
+  try {
+    const [rulesRes, tfmRes] = await Promise.all([
+      fetch(`${API}/api/run-pipeline`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({min_support:0.015, min_confidence:0.85, min_lift:1.0, min_leverage:0.0})
+      }),
+      fetch(`${API}/api/tfm-rules`)
+    ]);
+
+    if (!rulesRes.ok) throw new Error('Pipeline error');
+    const data = await rulesRes.json();
+    allRules = data.rules_clinical || [];
+
+    const tfmData = await tfmRes.json();
+    tfmRules = tfmData.rules || [];
+
+    // Marcar cuáles son TFM
+    allRules.forEach(r => {
+      const ant = new Set(r.antecedents), cons = new Set(r.consequents);
+      r.isTFM = tfmRules.some(t =>
+        JSON.stringify([...new Set(t.ant)].sort()) === JSON.stringify([...ant].sort()) &&
+        JSON.stringify([...new Set(t.cons)].sort()) === JSON.stringify([...cons].sort())
+      );
+      r.tfmData = r.isTFM ? tfmRules.find(t =>
+        JSON.stringify([...new Set(t.ant)].sort()) === JSON.stringify([...ant].sort())
+      ) : null;
+    });
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('rule-count').textContent = `${allRules.length} reglas`;
+    document.getElementById('info-panel').style.display = 'flex';
+
+    renderGraph();
+  } catch(e) {
+    document.getElementById('loading').innerHTML =
+      `<div style="color:#f85149">✗ Error: ${e.message}</div>
+       <button onclick="loadData()" style="margin-top:10px;padding:7px 14px;background:#58a6ff;
+       color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:600">Reintentar</button>`;
+  }
+}
+
+// ============================================================
+// CONSTRUIR GRAFO
+// ============================================================
+function buildGraph(rules) {
+  nodeMap = {};
+  nodes = [];
+  edges = [];
+
+  const addNode = (label) => {
+    if (!nodeMap[label]) {
+      const id = nodes.length;
+      const isMut = label.includes('MUTATIONSUBTYPES=');
+      const shortLabel = label.replace('MUTATIONSUBTYPES=','').replace('RNASEQ-CLUSTER_CONSENHIER=','RNASEQ=')
+        .replace('MethTypes.201408=','Meth=').replace('UV-signature=','UV=')
+        .replace('LYMPHOCYTE.SCORE=','LScore=').replace('MIRCluster=','MIR=');
+      nodeMap[label] = {
+        id, label, shortLabel, isMut,
+        x: W/2 + (Math.random()-0.5)*300,
+        y: H/2 + (Math.random()-0.5)*300,
+        vx:0, vy:0,
+        color: isMut ? getSubtypeColor(label) : COLORS.var,
+        radius: isMut ? 22 : 14,
+        connections: 0,
+        rules: []
+      };
+      nodes.push(nodeMap[label]);
+    }
+    return nodeMap[label];
+  };
+
+  rules.forEach((rule, ri) => {
+    const consNode = addNode(rule.consequents[0]);
+    rule.antecedents.forEach(ant => {
+      const antNode = addNode(ant);
+      antNode.connections++;
+      consNode.connections++;
+      antNode.rules.push(rule);
+      edges.push({
+        source: antNode, target: consNode,
+        lift: rule.lift, confidence: rule.confidence,
+        support: rule.support, leverage: rule.leverage,
+        isTFM: rule.isTFM, rule,
+        color: lerpColor('#3fb950','#f85149', Math.min((rule.lift-1)/6, 1)),
+        width: 0.5 + rule.confidence * 2,
+      });
+    });
+  });
+
+  // Ajustar radios por conexiones
+  nodes.forEach(n => {
+    if (!n.isMut) n.radius = Math.max(10, Math.min(20, 8 + n.connections * 2));
+  });
+}
+
+// ============================================================
+// SIMULACIÓN FÍSICA (force-directed)
+// ============================================================
+function initForce() {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  const repulsion = parseFloat(document.getElementById('rep-slider').value);
+  const linkDist = parseFloat(document.getElementById('dist-slider').value);
+
+  let alpha = 1;
+  function tick() {
+    if (alpha < 0.001) { draw(); return; }
+    alpha *= 0.95;
+
+    // Repulsión entre nodos
+    for (let i=0; i<nodes.length; i++) {
+      for (let j=i+1; j<nodes.length; j++) {
+        const dx = nodes[j].x - nodes[i].x;
+        const dy = nodes[j].y - nodes[i].y;
+        const dist = Math.max(Math.sqrt(dx*dx+dy*dy), 1);
+        const force = repulsion / (dist*dist);
+        nodes[i].vx -= dx*force/dist;
+        nodes[i].vy -= dy*force/dist;
+        nodes[j].vx += dx*force/dist;
+        nodes[j].vy += dy*force/dist;
+      }
+    }
+
+    // Atracción por aristas
+    edges.forEach(e => {
+      const dx = e.target.x - e.source.x;
+      const dy = e.target.y - e.source.y;
+      const dist = Math.max(Math.sqrt(dx*dx+dy*dy), 1);
+      const force = (dist - linkDist) * 0.05;
+      e.source.vx += dx*force/dist;
+      e.source.vy += dy*force/dist;
+      e.target.vx -= dx*force/dist;
+      e.target.vy -= dy*force/dist;
+    });
+
+    // Gravedad al centro
+    nodes.forEach(n => {
+      n.vx += (W/2 - n.x) * 0.002;
+      n.vy += (H/2 - n.y) * 0.002;
+      n.vx *= 0.7; n.vy *= 0.7;
+      n.x += n.vx; n.y += n.vy;
+    });
+
+    draw();
+    animFrame = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+// ============================================================
+// DIBUJO
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(transform.x, transform.y);
+  ctx.scale(transform.scale, transform.scale);
+
+  // Fondo sutil
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(-transform.x/transform.scale, -transform.y/transform.scale, W/transform.scale, H/transform.scale);
+
+  // Aristas
+  edges.forEach(e => {
+    const isHighlight = selectedNode &&
+      (e.source === selectedNode || e.target === selectedNode);
+    const alpha = selectedNode ? (isHighlight ? 0.9 : 0.1) : 0.55;
+
+    ctx.beginPath();
+    ctx.moveTo(e.source.x, e.source.y);
+
+    // Curva ligera para aristas
+    const mx = (e.source.x + e.target.x)/2 + (e.target.y - e.source.y)*0.15;
+    const my = (e.source.y + e.target.y)/2 - (e.target.x - e.source.x)*0.15;
+    ctx.quadraticCurveTo(mx, my, e.target.x, e.target.y);
+
+    if (e.isTFM) {
+      ctx.setLineDash([5,3]);
+      ctx.strokeStyle = `rgba(255,166,87,${alpha})`;
+      ctx.lineWidth = e.width + 0.5;
+    } else {
+      ctx.setLineDash([]);
+      ctx.strokeStyle = e.color + Math.round(alpha*255).toString(16).padStart(2,'0');
+      ctx.lineWidth = e.width;
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Flecha en el target
+    if (isHighlight || !selectedNode) {
+      const dx = e.target.x - mx, dy = e.target.y - my;
+      const len = Math.sqrt(dx*dx+dy*dy);
+      const nx = dx/len, ny = dy/len;
+      const ar = e.target.radius + 4;
+      const ax = e.target.x - nx*ar, ay = e.target.y - ny*ar;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax - nx*6 + ny*4, ay - ny*6 - nx*4);
+      ctx.lineTo(ax - nx*6 - ny*4, ay - ny*6 + nx*4);
+      ctx.closePath();
+      ctx.fillStyle = e.isTFM ? `rgba(255,166,87,${alpha})` :
+        e.color + Math.round(alpha*255).toString(16).padStart(2,'0');
+      ctx.fill();
+    }
+  });
+
+  // Nodos
+  nodes.forEach(n => {
+    const isHovered = n === hoveredNode;
+    const isSelected = n === selectedNode;
+    const alpha = selectedNode && !isSelected ? 0.35 : 1;
+    const r = n.radius * (isHovered ? 1.2 : 1);
+
+    // Glow para nodos de mutación
+    if (n.isMut) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r+8, 0, Math.PI*2);
+      ctx.fillStyle = n.color + '22';
+      ctx.fill();
+    }
+
+    // Círculo principal
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+    ctx.fillStyle = n.color + (alpha < 1 ? '59' : 'dd');
+    ctx.fill();
+    ctx.strokeStyle = isSelected ? '#fff' : (isHovered ? n.color : n.color+'88');
+    ctx.lineWidth = isSelected ? 2.5 : 1.5;
+    ctx.stroke();
+
+    // Etiqueta
+    const fontSize = n.isMut ? 11 : 9;
+    ctx.font = `${n.isMut?'600 ':''}${fontSize}px Segoe UI,sans-serif`;
+    ctx.fillStyle = `rgba(230,237,243,${alpha})`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    if (n.isMut || isHovered || isSelected || transform.scale > 1.2) {
+      const lines = n.shortLabel.split('=');
+      if (lines.length > 1 && !n.isMut) {
+        ctx.fillText(lines[0]+'=', n.x, n.y - 5);
+        ctx.fillText(lines[1], n.x, n.y + 5);
+      } else {
+        ctx.fillText(n.shortLabel, n.x, n.y + r + 11);
+      }
+    }
+  });
+
+  ctx.restore();
+}
+
+// ============================================================
+// RENDER (filtros → rebuild → simulate)
+// ============================================================
+function renderGraph() {
+  const minLift = parseFloat(document.getElementById('lift-slider').value);
+  const subFilter = document.getElementById('subtype-filter').value;
+
+  let filtered = allRules.filter(r => r.lift >= minLift);
+  if (subFilter) {
+    filtered = filtered.filter(r =>
+      [...r.antecedents,...r.consequents].some(x=>x.includes(subFilter))
+    );
+  }
+
+  buildGraph(filtered);
+  document.getElementById('info-nodes').textContent = nodes.length;
+  document.getElementById('info-edges').textContent = edges.length;
+  document.getElementById('info-tfm').textContent = edges.filter(e=>e.isTFM).length;
+  document.getElementById('rule-count').textContent = `${filtered.length} reglas`;
+
+  selectedNode = null;
+  document.getElementById('selected-node').textContent = 'ninguno';
+  initForce();
+}
+
+// ============================================================
+// INTERACCIÓN
+// ============================================================
+function getNodeAt(mx, my) {
+  const x = (mx - transform.x) / transform.scale;
+  const y = (my - transform.y) / transform.scale;
+  for (let i=nodes.length-1; i>=0; i--) {
+    const n = nodes[i];
+    if (Math.hypot(x-n.x, y-n.y) < n.radius + 6) return n;
+  }
+  return null;
+}
+
+function showTooltip(node, mx, my) {
+  const tip = document.getElementById('tooltip');
+  const connRules = edges.filter(e => e.source===node || e.target===node);
+  const avgLift = connRules.length ?
+    (connRules.reduce((a,e)=>a+e.lift,0)/connRules.length).toFixed(2) : '—';
+
+  tip.style.display = 'block';
+  tip.style.left = (mx + 14) + 'px';
+  tip.style.top = (my - 10) + 'px';
+
+  if (node.isMut) {
+    const ruleCount = edges.filter(e => e.target===node).length;
+    tip.innerHTML = `<strong>${node.shortLabel}</strong>
+      <div class="metric">Reglas que apuntan: <span>${ruleCount}</span></div>
+      <div class="metric">Lift medio: <span>${avgLift}</span></div>
+      ${node.shortLabel.includes('BRAF') ?
+        '<div style="color:#8b949e;font-size:.68rem;margin-top:4px">Sobreexpresión MITF-low · MIR-1,4</div>' :
+        node.shortLabel.includes('RAS') ?
+        '<div style="color:#8b949e;font-size:.68rem;margin-top:4px">Cluster immune · LScore bajo · CpG-meth</div>' :
+        node.shortLabel.includes('Triple') ?
+        '<div style="color:#8b949e;font-size:.68rem;margin-top:4px">not UV · hipermetilación · MIR-3</div>' : ''}`;
+  } else {
+    const parts = node.label.split('=');
+    tip.innerHTML = `<strong>${parts[0]}</strong>
+      <div style="color:${node.color};font-size:.8rem;margin-bottom:4px">${parts[1] || ''}</div>
+      <div class="metric">Conexiones: <span>${connRules.length}</span></div>
+      <div class="metric">Lift medio: <span>${avgLift}</span></div>`;
+  }
+}
+
+function showEdgeTooltip(edge, mx, my) {
+  const tip = document.getElementById('tooltip');
+  tip.style.display = 'block';
+  tip.style.left = (mx + 14) + 'px';
+  tip.style.top = (my - 10) + 'px';
+
+  const antShort = edge.rule.antecedents.map(a=>a.split('=')[1]||a).join(', ');
+  const consShort = (edge.rule.consequents[0]||'').split('=')[1] || '';
+
+  tip.innerHTML = `${edge.isTFM ? '<div style="color:#ffa657;font-size:.7rem;margin-bottom:4px">✅ Regla TFM</div>' : ''}
+    <strong style="font-size:.73rem">${antShort}</strong>
+    <div style="color:var(--muted);margin:2px 0">→ <span style="color:${getSubtypeColor(edge.rule.consequents[0])}">${consShort}</span></div>
+    <div class="metric">Lift: <span style="color:${edge.lift>5?'#f85149':edge.lift>3?'#d29922':'#3fb950'}">${edge.lift}</span></div>
+    <div class="metric">Conf: <span>${edge.confidence}</span> &nbsp; Sop: <span>${edge.support}</span></div>`;
+}
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+
+  if (dragging) {
+    transform.x = transformStart.x + (e.clientX - dragStart.x);
+    transform.y = transformStart.y + (e.clientY - dragStart.y);
+    draw(); return;
+  }
+
+  const node = getNodeAt(mx, my);
+  if (node) {
+    hoveredNode = node;
+    canvas.style.cursor = 'pointer';
+    showTooltip(node, mx, my);
+  } else {
+    // Detectar hover sobre arista
+    hoveredNode = null;
+    canvas.style.cursor = 'grab';
+    const tip = document.getElementById('tooltip');
+    let edgeFound = false;
+
+    const x = (mx - transform.x) / transform.scale;
+    const y = (my - transform.y) / transform.scale;
+    for (const edge of edges) {
+      const dx = edge.target.x - edge.source.x, dy = edge.target.y - edge.source.y;
+      const len = Math.sqrt(dx*dx+dy*dy);
+      const t = Math.max(0, Math.min(1, ((x-edge.source.x)*dx+(y-edge.source.y)*dy)/(len*len)));
+      const px = edge.source.x+t*dx, py = edge.source.y+t*dy;
+      if (Math.hypot(x-px, y-py) < 6) {
+        showEdgeTooltip(edge, mx, my);
+        edgeFound = true;
+        break;
+      }
+    }
+    if (!edgeFound) tip.style.display = 'none';
+  }
+  if (!animFrame) draw();
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoveredNode = null;
+  document.getElementById('tooltip').style.display = 'none';
+  if (!animFrame) draw();
+});
+
+canvas.addEventListener('mousedown', e => {
+  dragging = true;
+  dragStart = {x:e.clientX, y:e.clientY};
+  transformStart = {...transform};
+  canvas.style.cursor = 'grabbing';
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (!dragging) return;
+  const moved = Math.hypot(e.clientX-dragStart.x, e.clientY-dragStart.y) > 3;
+  dragging = false;
+  canvas.style.cursor = 'grab';
+
+  if (!moved) {
+    const rect = canvas.getBoundingClientRect();
+    const node = getNodeAt(e.clientX-rect.left, e.clientY-rect.top);
+    if (node) {
+      selectedNode = (selectedNode === node) ? null : node;
+      document.getElementById('selected-node').textContent =
+        selectedNode ? selectedNode.shortLabel : 'ninguno';
+      if (!animFrame) draw();
+    }
+  }
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.max(0.2, Math.min(5, transform.scale * delta));
+  transform.x = mx - (mx - transform.x) * (newScale/transform.scale);
+  transform.y = my - (my - transform.y) * (newScale/transform.scale);
+  transform.scale = newScale;
+  if (!animFrame) draw();
+}, {passive:false});
+
+function resetView() {
+  transform = {x:0, y:0, scale:1};
+  selectedNode = null;
+  if (!animFrame) draw();
+  else draw();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('load', () => {
+  canvas = document.getElementById('c');
+  ctx = canvas.getContext('2d');
+
+  function resize() {
+    const wrap = document.getElementById('canvas-wrap');
+    W = canvas.width = wrap.clientWidth;
+    H = canvas.height = wrap.clientHeight;
+    if (nodes.length) draw();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  loadData();
+});
+</script>
+</body>
+</html>
