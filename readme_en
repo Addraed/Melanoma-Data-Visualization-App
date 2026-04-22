@@ -1,0 +1,144 @@
+# 🧬 Melanoma Subtype Classifier
+
+> Identification of molecular profiles specific to cutaneous melanoma subtypes through association rules on TCGA-SKCM multi-omic data.
+
+**Author:** Manuel Rosario Marín Fernández  
+**Masters degree:** MU Bioinformatics and Biostatistics · UOC / Universitat de Barcelona  
+**Supervisor:** Romina Astrid Rebrij  
+**Original thesis:** January 2023  
+
+---
+
+## 📋 Description
+
+Multi-omic analysis of the **TCGA-SKCM** dataset (331 patients, cutaneous melanoma) applying the FP-Growth algorithm to extract association rules that identify clinical and molecular profiles by mutation subtype: **BRAF**, **RAS**, **NF1** and **Triple WT**.
+
+The project has evolved from a static R Shiny visualization application into a **full web application** with a real-time executable pipeline, interactive rule visualization and integrated clinical documentation.
+
+---
+
+## 🗂️ Repository structure
+
+```
+├── notebook/
+│   └── TFM_code_raw_ML_Melanoma.ipynb    # Original pipeline (Google Colab)
+│
+├── shiny_app/
+│   └── app.R                             # Original Shiny app from the thesis (2023)
+│
+├── web_app/                              # ← Current web application
+│   ├── main.py                           #   FastAPI backend
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── static/
+│       └── index.html                    #   Interactive frontend
+│
+├── TFM_ManuelRosarioMarinFernandez.pdf   # Thesis document
+├── render.yaml                           # Render deployment config
+└── README.md
+```
+
+---
+
+## 🔄 Project evolution
+
+### V1. Shiny App (Thesis 2023)
+
+The original application was developed in R with Shiny as the thesis deliverable. It allowed users to visually explore pre-calculated analysis results: the 317 association rules, the table of 11 clinical profiles and a chord diagram by subtypes.
+
+**Limitations:** results were pre-calculated and embedded, so it was not possible to modify parameters, run the pipeline or load new data from the interface.
+
+🔗 [ShinyApps.io](http://0dt2j0-manuel-mar0n0fern0ndez.shinyapps.io/TFMVisualizing_ShinyApp)
+
+---
+
+### V2. Full Web App (FastAPI + HTML)
+
+Complete redesign of the application with the goal of making the pipeline **executable in real time** from the browser, without depending on R or pre-calculated results.
+
+**What changes:**
+
+- The FP-Growth pipeline runs on the server (Python/mlxtend) with configurable parameters
+- Data is loaded from the same source as the original thesis (Google Drive) and cached locally
+- Computed results are automatically compared against the 11 rules from Table 3 of the thesis
+- An interactive force-directed network graph visualization is added
+- Integrated clinical and statistical documentation is included within the app
+
+🔗 [melanoma-pipeline.onrender.com](https://melanoma-pipeline.onrender.com)
+
+---
+
+## ⚙️ Pipeline
+
+```
+TCGA-SKCM data (331 patients)
+    → Cleaning and normalization
+    → One-hot encoding of 6 multi-omic variables
+    → FP-Growth (mlxtend, min_support=0.015)
+    → Association rules (min_confidence=0.85) → 317 rules
+    → Filtering: lift>1 · leverage>0 · consequent=MUTATIONSUBTYPES
+    → 11 clinical rules (Table 3, thesis document)
+```
+
+### Analysis variables
+
+| Variable | Values | Description |
+|---|---|---|
+| `MUTATIONSUBTYPES` | BRAF · RAS · NF1 · Triple WT | Mutation subtype (target variable) |
+| `UV-signature` | UV signature · not UV | UV exposure mutational signature |
+| `RNASEQ-CLUSTER_CONSENHIER` | MITF-low · keratin · immune | Gene expression cluster (RNA-seq) |
+| `MethTypes.201408` | normal-like · CpG island · hyper · hypo | CpG methylation type |
+| `MIRCluster` | MIR.type.1–4 | MicroRNA expression cluster |
+| `LYMPHOCYTE.SCORE` | 0.0 – 6.0 | Tumor infiltrating lymphocyte density (TIL) |
+
+---
+
+## 🖥️ Web app features
+
+| Step | Description |
+|---|---|
+| **1 · Data loading** | TFM data (Google Drive) · custom CSV · calibrated synthetic data |
+| **2 · Preprocessing** | One-hot encoding · LYMPHOCYTE.SCORE as categorical 0.0–6.0 |
+| **3–5 · Pipeline** | FP-Growth + rules + clinical filtering, configurable parameters |
+| **6 · Results** | Scatter plot · TFM rules · computed rules · matches |
+| **7 · Graph** | Interactive force-directed network · filters by lift and subtype |
+| **8 · Documentation** | Clinical variables · statistical metrics · thesis context |
+
+---
+
+## 📦 Technology stack
+
+| Layer | V1 (Shiny) | V2 (Web App) |
+|---|---|---|
+| Data | TCGAbiolinks (R) | Google Drive (thesis URL) + CSV cache |
+| ML pipeline | mlxtend in Colab (pre-calculated) | mlxtend executed on server in real time |
+| Backend | R Shiny Server | FastAPI (Python) |
+| Frontend | Shiny UI (R) | HTML/JS vanilla |
+| Visualization | Chord diagram (R) | Scatter plot + force-directed graph (Canvas) |
+| Deployment | ShinyApps.io | Render (Docker) |
+
+---
+
+## 🚀 Local deployment
+
+```bash
+git clone https://github.com/Addraed/Melanoma-Data-Visualization-App.git
+cd Melanoma-Data-Visualization-App/web_app
+
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+# → http://localhost:8000
+```
+
+---
+
+## 📄 Main reference
+
+Cancer Genome Atlas Network. *Genomic Classification of Cutaneous Melanoma.* Cell, vol. 161, Issue 7, 1681–1696, 2015. DOI: [10.1016/j.cell.2015.05.044](https://doi.org/10.1016/j.cell.2015.05.044)
+
+---
+
+## 📜 License
+
+**CC BY-NC-ND 3.0 ES** : Attribution · NonCommercial · NoDerivatives  
+© Manuel Rosario Marín Fernández, 2023.
