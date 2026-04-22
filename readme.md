@@ -1,125 +1,144 @@
-# 🧬 Melanoma Subtype Classifier ( TFM Bioinformática y Bioestadística )
+# 🧬 Melanoma Subtype Classifier
 
-> Desarrollo de una aplicación web para la identificación de síntomas específicos de distintos subtipos de cáncer de melanoma para una mejor profilaxis y un tratamiento más especializado.
+> Identificación de perfiles moleculares específicos de los subtipos de melanoma cutáneo mediante reglas de asociación sobre datos multi-ómicos TCGA-SKCM.
 
 **Autor:** Manuel Rosario Marín Fernández  
-**Máster:** MU Bioinformática y Bioestadística / Universitat Oberta de Catalunya (UOC) / Universitat de Barcelona  
+**Máster:** MU Bioinformática y Bioestadística · UOC / Universitat de Barcelona  
 **Tutora:** Romina Astrid Rebrij  
-**Fecha:** Enero 2023  
+**TFM original:** Enero 2023  
 
 ---
 
 ## 📋 Descripción
 
-Este proyecto aplica técnicas de **aprendizaje automático no supervisado** sobre datos genómicos del proyecto [TCGA-SKCM](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga) para identificar patrones y dependencias entre variables clínicas y genómicas en pacientes con cáncer de melanoma cutáneo.
+Análisis multi-ómico sobre el dataset **TCGA-SKCM** (331 pacientes, melanoma cutáneo) aplicando el algoritmo FP-Growth para extraer reglas de asociación que identifican perfiles clínicos y moleculares por subtipo de mutación: **BRAF**, **RAS**, **NF1** y **Triple WT**.
 
-A partir de los patrones extraídos, se desarrolló una **aplicación web interactiva con R Shiny** orientada a profesionales sanitarios sin conocimientos avanzados de bioinformática, facilitando la exploración visual de las reglas de asociación obtenidas.
-
----
-
-## 🎯 Objetivos
-
-- Extraer y analizar patrones e interacciones relevantes en datos multi-ómicos de melanoma
-- Identificar perfiles clínicos para los subtipos de mutación: **BRAF**, **RAS** y **Triple WT**
-- Desarrollar una aplicación web accesible para la visualización de los resultados
+El proyecto ha evolucionado desde una aplicación R Shiny de visualización estática hacia una **aplicación web completa** con pipeline ejecutable en tiempo real, visualización interactiva de reglas y documentación clínica integrada.
 
 ---
 
 ## 🗂️ Estructura del repositorio
 
 ```
-├── data/
-│   ├── reglas_asoc.csv               # Reglas de asociación extraídas
-│   ├── lista_items.csv               # Ítems (antecedentes y consecuentes)
-│   └── matriz_adyacencia_porgrupos.csv  # Matriz para el diagrama de cuerdas
-│
 ├── notebook/
-│   └── TFM_code_raw_ML_Melanoma.ipynb   # Pipeline completo de análisis en Python
+│   └── TFM_code_raw_ML_Melanoma.ipynb    # Pipeline original (Google Colab)
 │
 ├── shiny_app/
-│   └── app.R                         # Código fuente de la aplicación Shiny
+│   └── app.R                             # App Shiny original del TFM (2023)
 │
-└── memoria/
-    └── TFM_ManuelRosarioMarinFernandez.pdf  # Memoria del TFM
+├── web_app/                              # ← Aplicación web actual
+│   ├── main.py                           #   Backend FastAPI
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── static/
+│       └── index.html                    #   Frontend interactivo
+│
+├── TFM_ManuelRosarioMarinFernandez.pdf   # Memoria del TFM
+├── render.yaml                           # Despliegue en Render
+└── README.md
 ```
 
 ---
 
-## ⚙️ Metodología
+## 🔄 Evolución del proyecto
 
-### Datos
-- **Fuente:** Proyecto TCGA-SKCM — 331 pacientes, datos de expresión génica (RNA-seq), epigenómica y variables clínico-patológicas
-- **Preprocesamiento:** Normalización log2, centrado de mediana, filtrado de genes planos por varianza
-- **Variables de interés:** `MUTATIONSUBTYPES`, `MIRCluster`, `UV_signature`, `LYMPHOCYTE.SCORE`, `RNASEQ-CLUSTER_CONSENHIER`, `MethTypes201408`
+### V1. App Shiny (TFM 2023)
 
-### Análisis
-- Algoritmo **FP-Growth** (mlxtend) con soporte mínimo de 0.015
-- Extracción de **965 itemsets frecuentes** → **317 reglas de asociación** (confianza ≥ 0.85)
-- Filtrado por **Lift > 1** y **Leverage > 0** → **11 reglas de interés clínico**
+La aplicación original se desarrolló en R con Shiny como entregable del TFM. Permitía explorar visualmente los resultados pre-calculados del análisis: las 317 reglas de asociación, la tabla de los 11 perfiles clínicos y un diagrama de cuerdas por subtipos.
 
-### Resultados destacados
+**Limitaciones:** los resultados estaban pre-calculados y embebidos por lo que no era posible modificar parámetros, ejecutar el pipeline ni cargar datos nuevos desde la interfaz.
 
-| Subtipo | Características asociadas |
+🔗 [ShinyApps.io](http://0dt2j0-manuel-mar0n0fern0ndez.shinyapps.io/TFMVisualizing_ShinyApp)
+
+---
+
+### V2. Web App completa (FastAPI + HTML)
+
+Rediseño completo de la aplicación con el objetivo de hacer el pipeline **ejecutable en tiempo real** desde el navegador, sin depender de R ni de resultados pre-calculados.
+
+**Qué cambia:**
+
+- El pipeline FP-Growth se ejecuta en el servidor (Python/mlxtend) con parámetros configurables
+- Los datos se cargan desde la misma fuente del TFM original (Google Drive) y se cachean
+- Los resultados calculados se comparan automáticamente con las 11 reglas de la Tabla 3 de la memoria
+- Se añade una visualización de grafo de red force-directed interactivo
+- Se incluye documentación clínica y estadística integrada en la propia app
+
+🔗 [melanoma-pipeline.onrender.com](https://melanoma-pipeline.onrender.com)
+
+---
+
+## ⚙️ Pipeline
+
+```
+Datos TCGA-SKCM (331 pacientes)
+    → Limpieza y normalización
+    → One-hot encoding de 6 variables multi-ómicas
+    → FP-Growth (mlxtend, min_support=0.015)
+    → Reglas de asociación (min_confidence=0.85) → 317 reglas
+    → Filtrado: lift>1 · leverage>0 · consecuente=MUTATIONSUBTYPES
+    → 11 reglas clínicas (Tabla 3, memoria TFM)
+```
+
+### Variables del análisis
+
+| Variable | Valores | Descripción |
+|---|---|---|
+| `MUTATIONSUBTYPES` | BRAF · RAS · NF1 · Triple WT | Subtipo de mutación ( variable objetivo) |
+| `UV-signature` | UV signature · not UV | Firma mutacional por exposición UV |
+| `RNASEQ-CLUSTER_CONSENHIER` | MITF-low · keratin · immune | Clúster de expresión génica (RNA-seq) |
+| `MethTypes.201408` | normal-like · CpG island · hyper · hypo | Tipo de metilación CpG |
+| `MIRCluster` | MIR.type.1–4 | Clúster de expresión microRNA |
+| `LYMPHOCYTE.SCORE` | 0.0 – 6.0 | Densidad de linfocitos infiltrantes (TIL) |
+
+---
+
+## 🖥️ Funcionalidades de la web app
+
+| Paso | Descripción |
 |---|---|
-| **BRAF** | Cluster MITF-low, LScore bajo, hiper/hipometilación CpG, MIR type 1 y 4 |
-| **RAS** | LScore bajo, islas CpG metiladas, sobreexpresión genes inmunes |
-| **Triple WT** | Ausencia firma UV, hipermetilación CpG, cluster queratina, MIR type 3 |
+| **1 · Carga de datos** | Datos TFM (Google Drive) · CSV propio · Datos sintéticos calibrados |
+| **2 · Preprocesamiento** | One-hot encoding · LYMPHOCYTE.SCORE como categórica 0.0–6.0 |
+| **3–5 · Pipeline** | FP-Growth + reglas + filtrado clínico, parámetros configurables |
+| **6 · Resultados** | Scatter plot · Reglas TFM · Reglas calculadas · Coincidencias |
+| **7 · Grafo** | Red force-directed interactiva · filtros por lift y subtipo |
+| **8 · Documentación** | Variables clínicas · métricas estadísticas · contexto del TFM |
 
 ---
 
-## 🖥️ Aplicación web
+## 📦 Stack tecnológico
 
-La app desarrollada con **R Shiny** permite explorar interactivamente las reglas de asociación extraídas. Está dividida en 4 secciones:
-
-- **Inicio — TFM:** Descripción del proyecto y contexto
-- **Diagrama de cuerdas:** Visualización interactiva de dependencias entre variables
-- **Variables explicadas:** Descripción de variables y medidas de calidad
-- **Reglas desglosadas:** Tabla filtrable de reglas por subtipo de mutación
-
-🔗 **App desplegada:** [ShinyApps.io](http://0dt2j0-manuel-mar0n0fern0ndez.shinyapps.io/TFMVisualizing_ShinyApp)
-
----
-
-## 🛠️ Stack tecnológico
-
-| Categoría | Herramientas |
-|---|---|
-| **Lenguajes** | Python, R |
-| **ML / Análisis** | mlxtend (FP-Growth), pandas, NumPy |
-| **Visualización** | matplotlib, plotly, chorddiag |
-| **App web** | R Shiny, semantic.dashboard, rpy2 |
-| **Entornos** | Google Colab, RStudio |
-| **Datos** | TCGAbiolinks, RSEM |
+| Capa | V1 (Shiny) | V2 (Web App) |
+|---|---|---|
+| Datos | TCGAbiolinks (R) | Google Drive (URL TFM) + caché CSV |
+| Pipeline ML | mlxtend en Colab (pre-calculado) | mlxtend ejecutado en servidor en tiempo real |
+| Backend | R Shiny Server | FastAPI (Python) |
+| Frontend | Shiny UI (R) | HTML/JS vanilla |
+| Visualización | Diagrama de cuerdas (R) | Scatter plot + Grafo force-directed (Canvas) |
+| Despliegue | ShinyApps.io | Render (Docker) |
 
 ---
 
-## 📦 Instalación y uso
+## 🚀 Despliegue local
 
-### Requisitos Python
 ```bash
-pip install pandas numpy matplotlib plotly mlxtend
-```
+git clone https://github.com/Addraed/Melanoma-Data-Visualization-App.git
+cd Melanoma-Data-Visualization-App/web_app
 
-### Requisitos R
-```r
-install.packages(c("shiny", "shinyWidgets", "semantic.dashboard", 
-                   "chorddiag", "DT", "dplyr"))
-```
-
-### Ejecutar la app localmente
-```r
-shiny::runApp("shiny_app/app.R")
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+# → http://localhost:8000
 ```
 
 ---
 
 ## 📄 Referencia principal
 
-Cancer Genome Atlas Network. *Genomic Classification of Cutaneous Melanoma.* Cell, vol. 161, Issue 7, (2015) 1681–1696. DOI: [10.1016/j.cell.2015.05.044](https://doi.org/10.1016/j.cell.2015.05.044)
+Cancer Genome Atlas Network. *Genomic Classification of Cutaneous Melanoma.* Cell, vol. 161, Issue 7, 1681–1696, 2015. DOI: [10.1016/j.cell.2015.05.044](https://doi.org/10.1016/j.cell.2015.05.044)
 
 ---
 
 ## 📜 Licencia
 
-Este trabajo está sujeto a una licencia **CC BY-NC-ND 3.0 ES** (Reconocimiento - NoComercial - SinObraDerivada).  
+**CC BY-NC-ND 3.0 ES** : Reconocimiento · NoComercial · SinObraDerivada  
 © Manuel Rosario Marín Fernández, 2023.
